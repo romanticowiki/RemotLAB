@@ -1,0 +1,133 @@
+##############################################################################
+# Rol: base
+#
+# Deja el Ubuntu Server listo para hospedar escritorios remotos.
+# Cubre la seccion "====VNC====" de comandos.txt salvo lo que es por usuario,
+# que vive en el rol vnc.
+##############################################################################
+---
+
+- name: Actualizar el indice de paquetes
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+# Se puede desactivar con -e hacer_upgrade=false. Es la unica tarea del
+# proyecto que puede volver a salir "changed" en ejecuciones posteriores, y es
+# correcto que lo haga: significa que Ubuntu ha publicado paquetes nuevos.
+# Para medir idempotencia limpia, desactivala.
+- name: Actualizar el sistema
+  ansible.builtin.apt:
+    upgrade: dist
+  when: hacer_upgrade | bool
+
+- name: Instalar el escritorio XFCE y el servidor VNC
+  ansible.builtin.apt:
+    name: "{{ paquetes_escritorio }}"
+    state: present
+
+# Va DESPUES de instalar XFCE a proposito: el metapaquete xfce4 arrastra
+# light-locker como dependencia recomendada, asi que purgarlo antes no sirve
+# de nada porque la instalacion lo vuelve a traer.
+- name: Purgar los bloqueos de pantalla
+  ansible.builtin.apt:
+    name: "{{ paquetes_a_purgar }}"
+    state: absent
+    purge: true
+
+# La limpieza de dependencias huerfanas NO va aqui, sino en los post_tasks de
+# site.yml: el rol gns3 se instala DESPUES de este y arrastra paquetes (entre
+# ellos un kernel generico) que solo se pueden retirar cuando ya esta todo
+# instalado. Dejandola aqui, una construccion desde cero saldria con changed=1
+# en la segunda ejecucion en vez de con changed=0.
+
+
+##############################################################################
+# Modo texto
+#
+# Instalar xfce4 en un Ubuntu Server arrastra un gestor grafico de login y
+# cambia el target por defecto a graphical.target. Eso deja un servidor X
+# corriendo en la consola de la instancia, que nadie ve nunca, gastando RAM.
+# Las sesiones graficas de verdad las sirve TigerVNC, una por usuario.
+##############################################################################
+
+- name: Consultar el target de arranque actual
+  ansible.builtin.command: systemctl get-default
+  register: target_actual
+  changed_when: false
+
+- name: Arrancar siempre en modo texto
+  ansible.builtin.command: systemctl set-default multi-user.target
+  when: target_actual.stdout != 'multi-user.target'
+  changed_when: true
+
+- name: Ver si hay un gestor grafico de login instalado
+  ansible.builtin.stat:
+    path: /usr/sbin/lightdm
+  register: lightdm_bin
+
+# set-default ya evita que arranque en el proximo reinicio; esto ademas libera
+# la RAM ahora mismo, sin esperar.
+- name: Parar y deshabilitar lightdm
+  ansible.builtin.systemd_service:
+    name: lightdm
+    enabled: false
+    state: stopped
+  when: lightdm_bin.stat.exists
+
+
+##############################################################################
+# Swap
+##############################################################################
+
+- name: Crear el fichero de swap
+  ansible.builtin.command:
+    cmd: "fallocate -l {{ swap_size }} {{ swap_file }}"
+    creates: "{{ swap_file }}"
+  register: swap_creado
+
+- name: Restringir los permisos del fichero de swap
+  ansible.builtin.file:
+    path: "{{ swap_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Formatear el fichero de swap
+  ansible.builtin.command: "mkswap {{ swap_file }}"
+  when: swap_creado is changed
+  changed_when: true
+
+- name: Declarar la swap en /etc/fstab para que sobreviva al reinicio
+  ansible.posix.mount:
+    path: none
+    src: "{{ swap_file }}"
+    fstype: swap
+    opts: sw
+    state: present
+
+# Los facts se recogen al principio del play, asi que en la ejecucion que crea
+# la swap todavia valen 0 y esta tarea corre. En la siguiente ya reflejan la
+# swap activa y se salta.
+- name: Activar la swap
+  ansible.builtin.command: "swapon {{ swap_file }}"
+  when: ansible_facts.swaptotal_mb | int == 0
+  changed_when: true
+
+
+##############################################################################
+# Reinicio por actualizacion de kernel
+##############################################################################
+
+- name: Comprobar si hace falta reiniciar
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: reboot_required
+
+- name: Reiniciar para estrenar el kernel nuevo
+  ansible.builtin.reboot:
+    msg: "Reinicio lanzado por Ansible tras actualizar el sistema"
+    reboot_timeout: 600
+  when:
+    - reboot_required.stat.exists
+    - reiniciar_si_hace_falta | bool

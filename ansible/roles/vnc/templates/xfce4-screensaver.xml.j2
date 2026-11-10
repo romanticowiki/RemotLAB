@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Gestionado por Ansible (rol vnc), solo se escribe si no existe.
+
+  El rol base purga light-locker y xscreensaver, pero xfce4-screensaver llega
+  como dependencia de xfce4-goodies y sigue instalado (se ve en
+  docs/versiones.txt). Si se activara, dejaria al alumno fuera de su propio
+  escritorio pidiendole una contrasena de Linux que no conoce: entra por
+  Guacamole, no por PAM.
+
+  No se purga el paquete para no desviarse del estado que ya esta probado en
+  la instancia original; se desactiva por configuracion.
+-->
+<channel name="xfce4-screensaver" version="1.0">
+  <property name="saver" type="empty">
+    <property name="enabled" type="bool" value="false"/>
+    <property name="idle-activation" type="empty">
+      <property name="enabled" type="bool" value="false"/>
+    </property>
+  </property>
+  <property name="lock" type="empty">
+    <property name="enabled" type="bool" value="false"/>
+    <property name="saver-activation" type="empty">
+      <property name="enabled" type="bool" value="false"/>
+    </property>
+  </property>
+</channel>

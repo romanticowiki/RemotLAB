@@ -1,0 +1,13 @@
+{
+{% if caddy_acme_email | length > 0 %}
+    email {{ caddy_acme_email }}
+{% endif %}
+{% if caddy_acme_staging | bool %}
+    acme_ca {{ caddy_staging_ca }}
+{% endif %}
+}
+
+{{ lab_fqdn }} {
+    encode gzip
+    reverse_proxy guacamole_web:8080
+}

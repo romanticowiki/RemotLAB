@@ -1,0 +1,9 @@
+---
+# La CA de staging evita consumir limites de Let's Encrypt mientras se prueba
+# DNS, puertos y el flujo ACME. Cambiar a false solo tras validar el portal.
+caddy_acme_staging: true
+caddy_acme_email: ""
+caddy_staging_ca: https://acme-staging-v02.api.letsencrypt.org/directory
+
+# Respaldo local generado por playbooks/backup-npm.yml, como maximo de 24 horas.
+caddy_npm_backup_max_age_seconds: 86400

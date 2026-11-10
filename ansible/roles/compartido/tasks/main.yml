@@ -1,0 +1,62 @@
+##############################################################################
+# Rol: compartido
+#
+# Sustituye al "sudo chmod 777 /home/Laboratorio_Compartido" de comandos.txt.
+#
+# Con 777 cualquier alumno podia borrar los examenes del maestro y el trabajo
+# de sus companeros. El diseno de aqui separa dos flujos que no tienen los
+# mismos permisos:
+#
+#   reparto/   el maestro publica enunciados y practicas; los alumnos SOLO leen
+#   entregas/  los alumnos entregan; el sticky bit impide que uno borre lo del
+#              otro, y como el directorio es del maestro, el maestro si puede
+#              recoger y limpiar
+#
+# Los modos en octal de 4 digitos:
+#   2750 = setgid + rwxr-x---   todo lo que se cree hereda el grupo compartido
+#   3770 = setgid + sticky + rwxrwx---
+##############################################################################
+---
+
+- name: Localizar al maestro dentro del mapeo
+  ansible.builtin.set_fact:
+    maestros: "{{ usuarios_lab | selectattr('rol', 'equalto', 'maestro') | list }}"
+
+- name: Comprobar que hay exactamente un maestro
+  ansible.builtin.assert:
+    that: maestros | length == 1
+    fail_msg: >-
+      usuarios_lab define {{ maestros | length }} usuarios con rol "maestro".
+      Los directorios reparto/ y entregas/ tienen que pertenecer a uno solo.
+    # Sin indexar la lista: Ansible renderiza los argumentos de la tarea ANTES
+    # de evaluar la condicion, asi que un "maestros | first" con la lista vacia
+    # reventaria con un error de Jinja en vez de con el fail_msg de arriba.
+    success_msg: "Maestro del laboratorio: {{ maestros | map(attribute='nombre') | join(', ') }}"
+
+- name: Fijar el nombre del maestro
+  ansible.builtin.set_fact:
+    maestro: "{{ (maestros | first).nombre }}"
+
+- name: Crear el directorio compartido
+  ansible.builtin.file:
+    path: "{{ dir_compartido }}"
+    state: directory
+    owner: root
+    group: "{{ grupo_compartido }}"
+    mode: "0755"
+
+- name: Crear reparto/ (el maestro escribe, los alumnos solo leen)
+  ansible.builtin.file:
+    path: "{{ dir_compartido }}/reparto"
+    state: directory
+    owner: "{{ maestro }}"
+    group: "{{ grupo_compartido }}"
+    mode: "2750"
+
+- name: Crear entregas/ (todos escriben, nadie borra lo ajeno)
+  ansible.builtin.file:
+    path: "{{ dir_compartido }}/entregas"
+    state: directory
+    owner: "{{ maestro }}"
+    group: "{{ grupo_compartido }}"
+    mode: "3770"

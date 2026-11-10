@@ -1,0 +1,29 @@
+##############################################################################
+# Handlers del rol vnc.
+#
+# Se disparan con "notify: sesiones vnc obsoletas". El rol gns3 tambien los
+# usa: cuando anade a los usuarios a los grupos ubridge, wireshark, kvm y
+# libvirt, las sesiones que ya estuvieran corriendo no heredan esos grupos y
+# GNS3 fallaria al tocar la red. Reiniciarlas es lo que lo arregla.
+##############################################################################
+---
+
+# Los handlers corren al final del play. Si alguien ejecuta solo --tags gns3
+# sobre una maquina donde el rol vnc no ha pasado nunca, las units no existen
+# todavia y reiniciarlas seria un error confuso. Esto lo comprueba antes.
+- name: Comprobar si las units de VNC ya estan desplegadas
+  listen: sesiones vnc obsoletas
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/vncserver-{{ (usuarios_lab | first).nombre }}.service"
+  register: vnc_unit_probe
+
+- name: Reiniciar las sesiones VNC
+  listen: sesiones vnc obsoletas
+  ansible.builtin.systemd_service:
+    name: "vncserver-{{ item.nombre }}.service"
+    state: restarted
+    daemon_reload: true
+  loop: "{{ usuarios_lab }}"
+  loop_control:
+    label: "{{ item.nombre }}"
+  when: vnc_unit_probe.stat.exists

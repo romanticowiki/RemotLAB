@@ -1,0 +1,22 @@
+; Gestionado por Ansible (rol gns3), solo se escribe si no existe.
+;
+; Configuracion del servidor local de GNS3 de {{ item.nombre }}.
+;
+; Sin este fichero, GNS3 muestra el "setup wizard" la primera vez que cada
+; alumno lo abre. Si cada uno contesta a su manera, todos acaban con el puerto
+; por defecto y las mismas consolas, y el segundo en arrancar falla o, peor,
+; le roba las consolas al primero.
+;
+; host = 127.0.0.1 a proposito: el servidor de GNS3 de cada usuario solo tiene
+; que hablar con su propia GUI, dentro de la misma sesion. No debe escuchar en
+; la red.
+;
+; gns3-server reescribe este fichero al cerrarse, por eso Ansible lo crea con
+; force: false y no lo vuelve a tocar.
+[Server]
+host = 127.0.0.1
+port = {{ item.gns3_puerto }}
+console_start_port_range = {{ item.consola[0] }}
+console_end_port_range = {{ item.consola[1] }}
+udp_start_port_range = {{ item.udp[0] }}
+udp_end_port_range = {{ item.udp[1] }}

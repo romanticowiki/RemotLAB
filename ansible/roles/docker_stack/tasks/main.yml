@@ -1,0 +1,338 @@
+##############################################################################
+# Rol: docker_stack
+#
+# Los cuatro contenedores del portal: guacd, MariaDB, Guacamole y Nginx Proxy
+# Manager, en un unico proyecto de compose.
+#
+# INSTALACION LIMPIA: no se restaura ningun dump antiguo. El esquema se genera
+# con el initdb.sh oficial de la imagen de Guacamole y, si se pide, se siembran
+# las conexiones VNC derivadas de usuarios_lab.
+##############################################################################
+---
+
+##############################################################################
+# La comprobacion que evita el fallo mas dificil de diagnosticar del proyecto
+#
+# Las conexiones VNC de Guacamole apuntan a una IP privada concreta. Si la
+# instancia no tiene esa IP, TODO se aplica sin un solo error y aun asi ningun
+# escritorio abre: Guacamole intenta conectar a una direccion que no existe y
+# solo da un timeout generico. Mejor fallar aqui y decir por que.
+##############################################################################
+
+- name: Comprobar que la instancia tiene la IP privada esperada
+  ansible.builtin.assert:
+    that: lab_ip_privada in ansible_facts.all_ipv4_addresses
+    fail_msg: >-
+      Esta instancia tiene {{ ansible_facts.all_ipv4_addresses | join(', ') }},
+      pero las conexiones de Guacamole se generan apuntando a
+      {{ lab_ip_privada }}.
+      Comprueba que private_ip en terraform.tfvars y lab_ip_privada en
+      group_vars/lab/main.yml valen lo mismo. Cambiar la IP privada primaria de
+      una ENI recrea la instancia, no se hace en caliente.
+    success_msg: "La instancia responde en {{ lab_ip_privada }}"
+
+- name: Comprobar que los secretos estan definidos
+  ansible.builtin.assert:
+    that:
+      - mysql_root_password is defined
+      - mysql_user_password is defined
+      - pw_vnc is defined
+    fail_msg: >-
+      Faltan secretos. Copia la plantilla y rellenala:
+        cp ansible/inventory/group_vars/lab/secrets.example.yml
+           ansible/inventory/group_vars/lab/secrets.yml
+    success_msg: "Secretos cargados desde secrets.yml"
+    quiet: true
+
+- name: Instalar Docker y el plugin de compose
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - docker-compose-v2
+      # Lo requiere docker_container_info para consultar el proxy sin shell.
+      - python3-requests
+    state: present
+
+- name: Poner al usuario ubuntu en el grupo docker
+  ansible.builtin.user:
+    name: ubuntu
+    groups: docker
+    append: true
+
+- name: Asegurar que Docker arranca al encender la maquina
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+
+# El directorio raiz va a 0750: dentro viven el docker-compose.yml con las
+# contrasenas de MariaDB y la clave privada del certificado en npm_letsencrypt.
+# Con 0755, cualquier alumno desde su escritorio podria leerlos.
+#
+# Esto no afecta a los contenedores: Docker monta los bind mounts como root al
+# crear el contenedor, y a partir de ahi el proceso de dentro accede al
+# subarbol montado sin volver a recorrer las rutas padre del host.
+- name: Crear el directorio raiz del stack
+  ansible.builtin.file:
+    path: "{{ compose_dir }}"
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: "0750"
+
+# Estos si se quedan en 0755: el proceso de dentro del contenedor (uid 999)
+# necesita poder atravesarlos.
+- name: Crear los subdirectorios del stack
+  ansible.builtin.file:
+    path: "{{ compose_dir }}/{{ item }}"
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: "0755"
+  loop:
+    - init
+    - db_data
+    - mariadb_conf
+    - npm_data
+    - npm_letsencrypt
+
+- name: Instalar la configuracion de memoria de MariaDB
+  ansible.builtin.template:
+    src: mariadb-aularemota.cnf.j2
+    dest: "{{ compose_dir }}/mariadb_conf/99-aularemota.cnf"
+    owner: ubuntu
+    group: ubuntu
+    mode: "0644"
+    backup: true
+
+
+##############################################################################
+# La semilla de la base de datos: esquema limpio
+#
+# initdb.sh viene dentro de la propia imagen de Guacamole, asi que el esquema
+# siempre corresponde EXACTAMENTE a la version que se va a ejecutar. Genera las
+# tablas y el usuario por defecto guacadmin/guacadmin.
+#
+# MariaDB solo ejecuta los ficheros de /docker-entrypoint-initdb.d con el
+# datadir VACIO. Si ya arranco una vez, estos ficheros se ignoran: para
+# rehacer la base hay que borrar db_data (ver el mensaje de la ultima tarea).
+##############################################################################
+
+- name: Retirar restos de un dump antiguo
+  ansible.builtin.file:
+    path: "{{ compose_dir }}/init/{{ item }}"
+    state: absent
+  loop:
+    - initdb.sql
+    - 01-guacamole.sql
+
+- name: Generar el esquema limpio de Guacamole
+  ansible.builtin.shell:
+    cmd: >-
+      docker run --rm {{ imagenes.guacamole }}
+      /opt/guacamole/bin/initdb.sh --mysql
+      > {{ compose_dir }}/init/01-esquema.sql
+    creates: "{{ compose_dir }}/init/01-esquema.sql"
+
+- name: Comprobar que el esquema se genero con contenido
+  ansible.builtin.stat:
+    path: "{{ compose_dir }}/init/01-esquema.sql"
+  register: esquema
+
+- name: Abortar si el esquema salio vacio
+  ansible.builtin.assert:
+    that: esquema.stat.exists and esquema.stat.size > 1000
+    fail_msg: >-
+      init/01-esquema.sql esta vacio o no existe. Suele ser que la imagen
+      {{ imagenes.guacamole }} no se pudo descargar. Compruebalo con
+      "docker run --rm {{ imagenes.guacamole }} /opt/guacamole/bin/initdb.sh --mysql | head".
+    success_msg: "Esquema de Guacamole generado ({{ esquema.stat.size }} bytes)"
+
+# El dueno es el uid del usuario mysql DE DENTRO del contenedor, no un usuario
+# del host (en el host el 999 resulta ser "lxd", que no pinta nada aqui). Es lo
+# que permite el modo 0640: solo lo lee quien tiene que ejecutarlo.
+#
+# Dejarlo en ubuntu:ubuntu con 0640 hace que mysqld no pueda abrirlo, el
+# entrypoint falle con "Permission denied" y MariaDB se quede con el datadir ya
+# inicializado: a partir de ahi se salta el init en TODOS los arranques
+# siguientes y la base queda vacia sin que nada de error.
+- name: Ajustar el dueno del esquema
+  ansible.builtin.file:
+    path: "{{ compose_dir }}/init/01-esquema.sql"
+    owner: "{{ mariadb_uid }}"
+    group: "{{ mariadb_uid }}"
+    mode: "0640"
+
+# Las conexiones se derivan de usuarios_lab, que es la fuente de verdad. El
+# nombre que se ve en Guacamole sale del campo "conexion" de cada usuario.
+- name: Sembrar las conexiones VNC
+  ansible.builtin.template:
+    src: 02-conexiones.sql.j2
+    dest: "{{ compose_dir }}/init/02-conexiones.sql"
+    owner: "{{ mariadb_uid }}"
+    group: "{{ mariadb_uid }}"
+    mode: "0640"
+  # Lleva las contrasenas de VNC en claro, como cualquier semilla de Guacamole.
+  no_log: true
+  when: guacamole_sembrar_conexiones | bool
+
+- name: Escribir el docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ compose_dir }}/docker-compose.yml"
+    owner: ubuntu
+    group: ubuntu
+    # Lleva dentro las contrasenas de MariaDB en claro, como cualquier compose.
+    # Ojo: ejecutar el playbook con --diff muestra esta plantilla renderizada.
+    mode: "0600"
+  no_log: true
+
+
+##############################################################################
+# Arranque
+##############################################################################
+
+- name: Levantar el nucleo del stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ compose_dir }}"
+    state: present
+    pull: missing
+
+# Tomcat abre el puerto en cuanto arranca, pero la primera vez MariaDB todavia
+# esta creando el esquema y Guacamole devuelve error. Se reintenta hasta que
+# responde de verdad.
+- name: Esperar a que Guacamole responda
+  ansible.builtin.uri:
+    url: http://127.0.0.1:8080/guacamole/
+    status_code: [200, 302]
+    follow_redirects: none
+  register: guac_http
+  until: guac_http.status in [200, 302]
+  retries: 30
+  delay: 5
+
+
+##############################################################################
+# Que el portal responda NO significa que la base este bien
+#
+# Guacamole sirve la pagina de login aunque su base de datos este vacia, asi
+# que sin esta comprobacion un fallo del init pasa desapercibido hasta que
+# alguien intenta entrar. Y como MariaDB solo ejecuta los scripts de init con
+# el datadir vacio, una vez que ha fallado la primera vez se lo salta en todos
+# los arranques siguientes sin volver a quejarse.
+#
+# La contrasena se lee de la variable de entorno de DENTRO del contenedor, asi
+# no viaja por la linea de comandos ni aparece en la salida del playbook.
+##############################################################################
+
+- name: Contar las tablas del esquema de Guacamole
+  ansible.builtin.command:
+    # OJO con la sangria: en un escalar plegado de YAML (>-) una linea con MAS
+    # sangria que la primera conserva su salto de linea en vez de plegarse. Si
+    # se indenta el "-e", acaba en la linea 2 del script y sh responde
+    # "sh: 2: -e: not found". Todas las lineas van al mismo nivel.
+    cmd: >-
+      docker exec guacamole_db sh -c
+      'mariadb -uroot -p"$MYSQL_ROOT_PASSWORD" -N -B -e
+      "SELECT COUNT(*) FROM information_schema.tables
+      WHERE table_schema = \"{{ mysql_database }}\""'
+  register: guac_tablas
+  changed_when: false
+  failed_when: false
+  # Tras ejecutar los scripts de init, MariaDB para el servidor temporal y
+  # arranca el definitivo. Durante esos segundos el contenedor esta "up" pero
+  # no acepta conexiones, asi que una consulta a la primera da un falso
+  # negativo. Se reintenta hasta que responde de verdad.
+  until: guac_tablas.rc == 0
+  retries: 24
+  delay: 5
+
+- name: Abortar si el esquema no llego a crearse
+  ansible.builtin.assert:
+    that:
+      - guac_tablas.rc == 0
+      - guac_tablas.stdout | trim | int > 10
+    fail_msg: >-
+      Guacamole responde pero su base de datos esta vacia: el esquema no se
+      ejecuto. Casi siempre es que mysqld (uid {{ mariadb_uid }}) no puede leer
+      init/01-esquema.sql; miralo con
+      "docker logs guacamole_db | grep -i denied".
+      Ojo: MariaDB solo corre los scripts de init con el datadir vacio, asi que
+      corregir el permiso no basta. Hay que borrar el datadir y volver a crear:
+        docker compose -f {{ compose_dir }}/docker-compose.yml down
+        sudo rm -rf {{ compose_dir }}/db_data
+        ansible-playbook site.yml --tags docker
+    success_msg: >-
+      Esquema creado: {{ guac_tablas.stdout | trim }} tablas en
+      {{ mysql_database }}
+
+- name: Contar conexiones VNC sin color de 16 bits
+  ansible.builtin.command:
+    cmd: >-
+      docker exec guacamole_db sh -c
+      'mariadb -uroot -p"$MYSQL_ROOT_PASSWORD" -N -B {{ mysql_database }}
+      -e "SELECT COUNT(*) FROM guacamole_connection c
+      LEFT JOIN guacamole_connection_parameter p
+      ON p.connection_id = c.connection_id
+      AND p.parameter_name = \"color-depth\"
+      WHERE c.protocol = \"vnc\"
+      AND (p.parameter_value IS NULL OR p.parameter_value <> \"16\")"'
+  register: color_depth_pendientes
+  changed_when: false
+
+- name: Aplicar color de 16 bits a las conexiones VNC existentes
+  ansible.builtin.command:
+    cmd: >-
+      docker exec -i guacamole_db sh -c
+      'exec mariadb -uroot -p"$MYSQL_ROOT_PASSWORD" {{ mysql_database }}'
+    stdin: |
+      INSERT INTO guacamole_connection_parameter
+        (connection_id, parameter_name, parameter_value)
+      SELECT connection_id, 'color-depth', '16'
+      FROM guacamole_connection
+      WHERE protocol = 'vnc'
+      ON DUPLICATE KEY UPDATE parameter_value = '16';
+  changed_when: true
+  when: color_depth_pendientes.stdout | trim | int > 0
+
+- name: Contar las conexiones sembradas
+  ansible.builtin.command:
+    cmd: >-
+      docker exec guacamole_db sh -c
+      'mariadb -uroot -p"$MYSQL_ROOT_PASSWORD" -N -B {{ mysql_database }}
+      -e "SELECT COUNT(*) FROM guacamole_connection"'
+  register: guac_conexiones
+  changed_when: false
+  failed_when: false
+  when: guacamole_sembrar_conexiones | bool
+
+- name: Resumen del portal
+  ansible.builtin.debug:
+    msg:
+      - "Nucleo del portal preparado; el rol caddy inicia despues el proxy {{ proxy_activo }}."
+      - "Conexiones sembradas: {{ guac_conexiones.stdout | default('0') | trim }}"
+      - "  1. Entra con guacadmin / guacadmin y CAMBIA esa contrasena."
+      - "  2. Crea un usuario por alumno y asignale su conexion."
+
+- name: Mostrar el acceso al portal con NPM
+  ansible.builtin.debug:
+    msg:
+      - >-
+        Acceso directo: http://{{ lab_fqdn if guacamole_expuesto | default(false) else '127.0.0.1' }}:8080/guacamole
+        {{ '(solo desde el host o por tunel SSH)' if not guacamole_expuesto | default(false) else '' }}
+      - "  3. En Nginx Proxy Manager (puerto 81) crea el proxy host hacia"
+      - "     guacamole_web:8080 con WebSockets ON y Force SSL ON, y emite el"
+      - "     certificado para {{ lab_fqdn }}."
+      - "  4. Cambia tambien la contrasena por defecto de Nginx Proxy Manager."
+  when: proxy_activo == 'npm'
+
+- name: Mostrar el acceso al portal con Caddy
+  ansible.builtin.debug:
+    msg:
+      - "URL publica tras iniciar Caddy: https://{{ lab_fqdn }}/guacamole"
+      - >-
+        {{ 'TLS de STAGING: el navegador no confiara en el certificado de pruebas.'
+           if caddy_acme_staging | bool else
+           'TLS de produccion: Caddy gestiona la emision y renovacion del certificado.' }}
+      - "El 8080 queda en loopback; Caddy no necesita una interfaz en el puerto 81."
+  when: proxy_activo == 'caddy'

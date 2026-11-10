@@ -1,0 +1,4 @@
+# Gestionado por Ansible (rol tuning_host).
+# Este fichero se carga despues de /etc/default/grub y anade solo los parametros
+# de zswap. Borrarlo, ejecutar update-grub y reiniciar revierte el cambio.
+GRUB_CMDLINE_LINUX_DEFAULT="${GRUB_CMDLINE_LINUX_DEFAULT} zswap.enabled=1 zswap.max_pool_percent={{ zswap_max_pool_percent }} zswap.compressor={{ zswap_compressor }} zswap.zpool={{ zswap_zpool }}"

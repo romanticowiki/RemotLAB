@@ -1,0 +1,33 @@
+---
+# Interfaz de escucha.
+#
+# 0.0.0.0 = todas. Lo que protege el puerto NO es el bind, es el security
+# group de AWS mas el token Bearer que exige cada endpoint.
+#
+# DEUDA CONOCIDA: mientras el puerto 8000 este abierto en el security group,
+# la app habla HTTP plano y el token viaja sin cifrar. Es aceptable solo para
+# la demo. Lo correcto es cerrar el 8000 y publicar la API como /api/ dentro
+# del proxy host de Nginx Proxy Manager, que ya termina TLS en el 443.
+# Instrucciones en DESPLIEGUE.md, seccion "Publicar la API con TLS".
+api_host: "0.0.0.0"
+api_puerto: 8000
+
+##############################################################################
+# Acceso al escritorio remoto desde la app
+#
+# La app no implementa VNC: abre el portal de Guacamole dentro de una vista web
+# con la sesion ya iniciada. Reimplementar RFB en Dart seria semanas de trabajo
+# para acabar con menos funciones que las que Guacamole ya tiene resueltas
+# (portapapeles, teclado, escalado, reconexion).
+#
+# La API pide esa sesion como "supervisor", NO como guacadmin. Supervisor solo
+# tiene permiso READ sobre las conexiones: puede ver escritorios y nada mas.
+# Asi, un token de la API filtrado no entrega el control de Guacamole.
+guac_usuario_app: supervisor
+
+# Por donde la API habla con Guacamole (loopback del host).
+guac_url_interna: "http://127.0.0.1:8080/guacamole"
+
+# Puerto por el que el TELEFONO alcanza el portal. El nombre de host no se
+# configura: la API lo deduce de la cabecera Host de cada peticion.
+guac_puerto_publico: 8080

@@ -1,0 +1,173 @@
+##############################################################################
+# AulaRemota - variables del laboratorio
+#
+# Este fichero es la FUENTE DE VERDAD. En comandos.txt el mapeo de usuarios
+# estaba repartido por 290 lineas y habia que tocar cinco sitios distintos para
+# anadir un alumno. Aqui se toca una lista y todo lo demas se deriva con loops.
+#
+# Los secretos NO estan aqui: viven en secrets.yml, en este mismo directorio,
+# EN CLARO y excluido por .gitignore. Hay una plantilla en
+# secrets.example.yml. Este fichero se puede leer y commitear sin problema.
+##############################################################################
+---
+
+# Nombre publico (No-IP). Es el nombre EXACTO para el que Nginx Proxy Manager
+# pide el certificado; un certificado TLS esta ligado a un nombre concreto.
+#
+# Debe coincidir con lab_fqdn de terraform.tfvars y con el host que apuntas a
+# mano en el panel de No-IP.
+lab_fqdn: lab.example.com
+
+# IP privada de la instancia dentro de la VPC.
+#
+# NO es un detalle cosmetico: las conexiones VNC de Guacamole se generan
+# apuntando a esta direccion. Si Terraform y este fichero no coinciden, el
+# playbook entero se aplica bien y aun asi Guacamole no abre ningun escritorio.
+#
+# DEBE coincidir con private_ip de terraform.tfvars. El rol docker_stack lo
+# comprueba contra la realidad de la maquina y aborta si no cuadra.
+lab_ip_privada: 10.0.77.58
+
+# Resolucion de las sesiones VNC.
+vnc_geometry: "1280x720"
+
+# Rama de configuracion de GNS3 que ESPERAMOS del PPA.
+# La ruta del fichero de configuracion depende de la version instalada
+# (~/.config/GNS3/2.2/gns3_server.conf). Si el PPA algun dia sirve la 2.3, el
+# fichero acabaria en la ruta equivocada, reapareceria el setup wizard y
+# volverian las colisiones de puertos, todo en silencio.
+# El rol gns3 detecta la version real y aborta si no coincide con esta.
+gns3_version: "2.2"
+
+# Directorio del stack de Docker en el host.
+compose_dir: /home/ubuntu/portal-guacamole
+
+# Limite compartido por el daemon y por cada servicio de Compose. Declararlo
+# aqui evita que ejecutar solo --tags docker dependa de defaults de otro rol.
+docker_log_driver: json-file
+docker_log_max_size: 10m
+docker_log_max_file: "3"
+
+# Grupo compartido entre maestro y alumnos.
+grupo_compartido: labcompartido
+dir_compartido: /home/Laboratorio_Compartido
+
+# Donde guarda el nodo de control el respaldo del estado de Nginx Proxy Manager.
+# Se deriva de inventory_dir (.../ansible/inventory) para que valga igual desde
+# site.yml y desde playbooks/backup-npm.yml, que estan a distinta profundidad.
+dir_respaldos_local: "{{ inventory_dir | dirname }}/files"
+
+# Poner en false para medir idempotencia sin que "apt upgrade" ensucie el
+# recuento cuando Ubuntu publica paquetes nuevos.
+hacer_upgrade: true
+
+# SWAP
+#
+# El rol base trae 2G por defecto, dimensionados para una instancia de 8 GiB.
+# En t3.micro solo hay 1 GiB de RAM, asi que se sube a 4G: sin esto el OOM
+# killer se lleva por delante los contenedores o las sesiones VNC.
+#
+# La swap va sobre EBS, que es mucho mas lento que la RAM. Funciona para que
+# el sistema no muera, no para que vaya bien.
+swap_size: 4G
+
+
+##############################################################################
+# EL MAPEO
+#
+# Reglas de derivacion:
+#   - puerto_vnc = 5900 + display   -> se deriva, es una regla del protocolo VNC
+#   - todo lo demas es EXPLICITO
+#
+# "conexion" es el nombre con el que el usuario ve su escritorio en Guacamole.
+# Es la fuente de verdad: de aqui salen las conexiones que se siembran en la
+# base de datos, y es el mismo nombre que muestra la app movil de supervision.
+#
+# Los rangos de GNS3 son politica, no se derivan del indice: si se calcularan
+# por posicion, insertar un usuario en medio desplazaria los puertos de todos
+# los siguientes.
+#
+# La numeracion empieza en el display :2 y deja el :1 libre, porque al usuario
+# "ubuntu" no se le crea sesion VNC a proposito: gastaria ~400 MB de RAM para
+# algo que se administra mejor por SSH.
+##############################################################################
+usuarios_lab:
+  - nombre: alumno1
+    rol: alumno
+    conexion: PC-Alumno-1
+    display: 2                 # -> puerto VNC 5902
+    gns3_puerto: 3081
+    consola: [5000, 5099]
+    udp: [10000, 10999]
+
+  - nombre: maestro1
+    rol: maestro
+    conexion: PC-Maestro-1
+    display: 3                 # -> puerto VNC 5903
+    gns3_puerto: 3082
+    consola: [5100, 5199]
+    udp: [11000, 11999]
+
+# Laboratorio minimo: un alumno y un maestro, para caber en t3.micro (1 GiB).
+# Solo se usan los displays :2 y :3, es decir los puertos VNC 5902 y 5903.
+#
+# Para crecer basta con anadir entradas aqui y su contrasena en secrets.yml:
+# todo lo demas (usuarios Linux, sesiones VNC, units de systemd, conexiones de
+# Guacamole y rangos de GNS3) se deriva de esta lista.
+
+
+##############################################################################
+# Imagenes de Docker fijadas por DIGEST, no por tag.
+#
+# Con ":latest" una reconstruccion dentro de seis meses podria traer versiones
+# que no encajen entre si, y el fallo apareceria en el peor momento posible.
+#
+# Nota de deuda: mariadb 10.5 esta fuera de soporte. Se conserva porque es la
+# combinacion verificada. Ya no hay dump que ate la version, asi que subir a
+# 11.4 LTS es ahora una mejora limpia; hazla aparte y verificala.
+##############################################################################
+imagenes:
+  guacd: guacamole/guacd@sha256:2d266a525a72ad55d8ea7cd4ca8342a1b44075759b03660d8684821b3636a922
+  guacamole: guacamole/guacamole@sha256:f5a2e47965e48e0acc27d0610221b5abb6c03bab29b21558d9fc199c712c75da
+  mariadb: mariadb@sha256:a530aeeefd82f4fa5150f391b6c75462140904780338766f6b03acecb1cca3ce
+  npm: jc21/nginx-proxy-manager@sha256:2aa69b382a384b676c0d4f1d6f2eac40ecd478fcf7af1cfb3f9f1d3cd0c81e12
+  # Imagen oficial 2.11.7-alpine, fijada por el digest multi-arquitectura.
+  caddy: caddy@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+
+# Proxy que publica el portal. NPM queda definido y conserva sus datos para
+# que volver a el sea cambiar este valor y relanzar los tags docker,caddy,api.
+#
+# El valor seguro durante la preparacion es npm. Antes de usar caddy, deja
+# caddy_acme_staging en true y valida todo el flujo con el certificado de
+# pruebas. Solo despues cambia staging a false para emitir el certificado real.
+proxy_activo: npm
+caddy_acme_staging: true
+
+# Nombres de la base de datos de Guacamole. Las contrasenas van en secrets.yml.
+mysql_database: guacamole_db
+mysql_user: guac_user
+
+
+##############################################################################
+# Instalacion limpia de Guacamole
+#
+# true  -> se genera el esquema con initdb.sh y se siembran las conexiones VNC
+#          derivadas de usuarios_lab.
+# false -> solo el esquema. Las conexiones se crean a mano en la interfaz web.
+#
+# No se restaura ningun dump antiguo: esta instalacion parte de cero.
+##############################################################################
+guacamole_sembrar_conexiones: true
+
+##############################################################################
+# Publicar el portal de Guacamole en el 8080
+#
+# Lo necesita la app movil: para ver el escritorio de un alumno abre el portal
+# dentro de una vista web, asi que el telefono tiene que alcanzar el puerto.
+#
+# Tiene que ir a la par con guacamole_expuesto en terraform.tfvars. Con uno de
+# los dos en false el escritorio remoto no funciona:
+#   - aqui en false  -> el contenedor solo escucha en loopback
+#   - en Terraform en false -> el security group corta el trafico
+##############################################################################
+guacamole_expuesto: true

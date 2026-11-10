@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 9 en adelante bloquea el trafico HTTP en claro. La API de supervision
+  y el portal de Guacamole viajan por HTTP mientras no esten publicados detras
+  del TLS de Nginx Proxy Manager.
+
+  POR QUE ESTA PERMITIDO EN GENERAL Y NO SOLO PARA UN HOST
+
+  La direccion del servidor la teclea el administrador en Ajustes: cada
+  instancia del laboratorio tiene su propia IP. Con una lista fija de hosts, la
+  app instalada desde este APK solo funcionaria contra la instancia de quien la
+  compilo, y contra cualquier otra fallaria con un error de red imposible de
+  diagnosticar desde el telefono.
+
+  Es una deuda consciente, no un descuido: mientras esto siga en true, el token
+  viaja en claro. Quien capture el trafico puede leer metricas; no puede
+  modificar nada, porque la API no tiene ninguna operacion de escritura.
+
+  CUANDO LA API ESTE DETRAS DE HTTPS: pon cleartextTrafficPermitted en false.
+  No hace falta tocar nada mas en la app.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config>

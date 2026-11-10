@@ -1,0 +1,12 @@
+---
+bbr_habilitado: true
+
+# La primera fase de zswap es deliberadamente temporal: se activa en caliente
+# para poder medirlo y desaparece al reiniciar. Solo habilita la persistencia
+# despues de comparar swap I/O, CPU y latencia bajo una carga real.
+zswap_prueba_runtime: true
+zswap_persistente: false
+zswap_reiniciar_al_persistir: false
+zswap_max_pool_percent: 20
+zswap_compressor: lz4
+zswap_zpool: z3fold

@@ -1,0 +1,66 @@
+##############################################################################
+# Gestionado por Ansible (rol vnc).
+#
+# Sesion VNC de {{ item.nombre }} en el display :{{ item.display }} (puerto {{ 5900 + item.display }}).
+#
+# Resuelve el fallo mas grave del montaje manual: hasta ahora, tras cada
+# reinicio de la instancia habia que entrar a cada usuario y lanzar vncserver
+# a mano. Con esto systemd las levanta solas al arrancar.
+#
+# Por que una unit por usuario y no una template tigervncserver@.service:
+# una unit template instanciada por display no puede deducir el User=, y una
+# instanciada por usuario no puede deducir el display. Nuestro mapeo necesita
+# las dos cosas a la vez, asi que se genera un fichero por usuario.
+##############################################################################
+[Unit]
+Description=Sesion TigerVNC de {{ item.nombre }} en el display :{{ item.display }}
+After=syslog.target network.target
+
+[Service]
+Type=simple
+User={{ item.nombre }}
+Group={{ item.nombre }}
+WorkingDirectory=/home/{{ item.nombre }}
+
+# Crea una sesion PAM de verdad, con su XDG_RUNTIME_DIR. Sin esto, media
+# sesion de XFCE (polkit, montaje de dispositivos, notificaciones) se comporta
+# de forma rara.
+PAMName=login
+
+# MemoryHigh fuerza recuperacion y throttling antes de agotar el host, pero no
+# mata la sesion como haria MemoryMax. CPUQuota es porcentaje de un solo nucleo.
+MemoryHigh={{ vnc_memory_high }}
+CPUQuota={{ vnc_cpu_quota }}
+TasksMax={{ vnc_tasks_max }}
+
+# Tras un apagado sucio quedan un lock y un socket huerfanos del display, y el
+# vncserver siguiente se niega a arrancar diciendo que el display esta en uso.
+# Esto es justo lo que impide que las sesiones vuelvan solas tras un reinicio.
+# El guion "-" delante hace que systemd ignore el codigo de salida.
+ExecStartPre=-/bin/rm -f /tmp/.X{{ item.display }}-lock /tmp/.X11-unix/X{{ item.display }}
+ExecStartPre=-/usr/bin/vncserver -kill :{{ item.display }}
+
+# -localhost no es OBLIGATORIO, no un descuido de seguridad.
+# guacd corre dentro de un contenedor, asi que su 127.0.0.1 es el del
+# contenedor, no el del host. VNC tiene que escuchar en la interfaz de red
+# para que guacd lo alcance en {{ lab_ip_privada }}:{{ 5900 + item.display }}.
+# Ponerlo en "yes" rompe el laboratorio entero.
+# Es seguro porque el security group no expone 5902-5905 a internet.
+#
+# -fg mantiene el proceso en primer plano, que es lo que espera Type=simple.
+# Asi no hace falta PIDFile, que en TigerVNC lleva el hostname dentro del
+# nombre y es fragil.
+#
+# -AlwaysShared es lo que permite que el administrador vea el escritorio del
+# alumno desde la app. Por defecto TigerVNC acepta un solo visor: la segunda
+# conexion EXPULSA a la primera. Sin esto, abrir el escritorio desde el movil
+# echaria al alumno de su propia sesion en mitad de la clase.
+# Con la bandera puesta, ambos ven la misma pantalla a la vez.
+ExecStart=/usr/bin/vncserver -fg :{{ item.display }} -geometry {{ vnc_geometry }} -localhost no -AlwaysShared
+ExecStop=/usr/bin/vncserver -kill :{{ item.display }}
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

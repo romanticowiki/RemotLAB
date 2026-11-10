@@ -1,0 +1,15 @@
+# Todo el repo se escribe con finales de linea LF, tambien al clonar en Windows.
+#
+# NO es cosmetico. Con CRLF, un script con shebang "#!/bin/sh" llega al
+# servidor como "#!/bin/sh\r" y el kernel busca un interprete llamado
+# "/bin/sh\r" que no existe. El error que da es
+#   Can't exec "...": No such file or directory
+# sobre un fichero que existe y es ejecutable, que es de los sintomas mas
+# desconcertantes que hay. Nos costo una vuelta entera de despliegue.
+* text=auto eol=lf
+
+# Binarios: que git no los toque.
+*.tar.gz binary
+*.pem    binary
+*.png    binary
+*.jpg    binary

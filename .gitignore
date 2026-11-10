@@ -1,0 +1,52 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Credenciales y material sensible
+*.pem
+*.key
+*.p12
+*.pfx
+*.vault-pass
+.vault-*
+vault-pass*
+.env
+.env.*
+!.env.example
+ansible/inventory/group_vars/lab/secrets.yml
+ansible/files/npm-state.tar.gz
+
+# Ansible y Python
+*.retry
+__pycache__/
+*.pyc
+
+# Flutter, Android y editores
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+coverage/
+**/android/local.properties
+**/.gradle/
+*.iml
+.idea/
+.vscode/
+
+# Sistema operativo y archivos locales
+*.log
+.DS_Store
+Thumbs.db
+

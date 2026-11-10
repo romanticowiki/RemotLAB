@@ -1,0 +1,231 @@
+##############################################################################
+# Rol: vnc
+#
+# Una sesion XFCE por usuario, cada una en su display, arrancada por systemd.
+#
+# En el proceso manual todo esto salia con los permisos correctos "gratis"
+# porque se hacia dentro de un "su - alumnoX". Con Ansible se corre como root,
+# asi que el owner y el modo de cada fichero hay que declararlos.
+#
+# Al usuario ubuntu no se le crea sesion a proposito: ~400 MB de RAM para algo
+# que se administra mejor por SSH. Por eso tampoco hace falta el
+# "sudo passwd ubuntu" de comandos.txt, que solo existia para poder desbloquear
+# el lock screen de XFCE dentro de esa sesion.
+##############################################################################
+---
+
+- name: Crear ~/.vnc
+  ansible.builtin.file:
+    path: "/home/{{ item.nombre }}/.vnc"
+    state: directory
+    owner: "{{ item.nombre }}"
+    group: "{{ item.nombre }}"
+    mode: "0700"
+  loop: "{{ usuarios_lab }}"
+  loop_control:
+    label: "{{ item.nombre }}"
+
+- name: Instalar el arranque grafico de la sesion
+  ansible.builtin.template:
+    src: xstartup.j2
+    dest: "/home/{{ item.nombre }}/.vnc/xstartup"
+    owner: "{{ item.nombre }}"
+    group: "{{ item.nombre }}"
+    # Ejecutable: Linux no corre el script sin el bit de ejecucion y la sesion
+    # se queda en gris. Es el "chmod +x ~/.vnc/xstartup" de comandos.txt.
+    mode: "0755"
+  loop: "{{ usuarios_lab }}"
+  loop_control:
+    label: "{{ item.nombre }}"
+  notify: sesiones vnc obsoletas
+
+
+##############################################################################
+# Contrasena de VNC
+#
+# vncpasswd -f NO es interactivo: lee de la entrada estandar y escribe el
+# fichero ofuscado en la salida. Por eso se puede usar desde Ansible.
+#
+# creates: hace la tarea idempotente (no la reejecuta si el fichero ya existe)
+# y no_log evita que la contrasena aparezca en la salida del playbook.
+#
+# Nota: el protocolo VNC clasico trunca la contrasena a 8 caracteres.
+##############################################################################
+
+- name: Generar la contrasena de VNC
+  ansible.builtin.shell:
+    cmd: >-
+      printf '%s\n' '{{ pw_vnc[item.nombre] }}'
+      | vncpasswd -f > /home/{{ item.nombre }}/.vnc/passwd
+    creates: "/home/{{ item.nombre }}/.vnc/passwd"
+  loop: "{{ usuarios_lab }}"
+  loop_control:
+    label: "{{ item.nombre }}"
+  no_log: true
+
+# La tarea anterior corre como root, asi que el fichero nace siendo de root.
+- name: Ajustar el dueno y los permisos de la contrasena de VNC
+  ansible.builtin.file:
+    path: "/home/{{ item.nombre }}/.vnc/passwd"
+    owner: "{{ item.nombre }}"
+    group: "{{ item.nombre }}"
+    mode: "0600"
+  loop: "{{ usuarios_lab }}"
+  loop_control:
+    label: "{{ item.nombre }}"
+
+
+##############################################################################
+# Ahorro de energia de XFCE
+#
+# Se escribe ANTES de arrancar la sesion: xfconfd lee estos ficheros al iniciar
+# y a partir de ahi manda el proceso, no el disco.
+#
+# force: false es deliberado. xfconfd reescribe estos ficheros al cerrar la
+# sesion, normalizando el XML. Con una plantilla normal, Ansible veria una
+# diferencia en cada ejecucion y nunca habria changed=0.
+# Contrapartida: cambiar la plantilla no se re-aplica solo; hay que borrar el
+# fichero en el host. En una reconstruccion desde cero siempre es la primera
+# vez, que es el caso que importa.
+##############################################################################
+
+# Cada nivel se crea por separado: si se declara solo la ruta completa, los
+# directorios intermedios pueden acabar siendo de root y el usuario no puede
+# escribir su propia configuracion.
+- name: Crear la cadena de directorios de configuracion de XFCE
+  ansible.builtin.file:
+    path: "/home/{{ item.0.nombre }}/{{ item.1 }}"
+    state: directory
+    owner: "{{ item.0.nombre }}"
+    group: "{{ item.0.nombre }}"
+    mode: "0755"
+  loop: >-
+    {{ usuarios_lab | product([
+         '.config',
+         '.config/xfce4',
+         '.config/xfce4/xfconf',
+         '.config/xfce4/xfconf/xfce-perchannel-xml',
+       ]) | list }}
+  loop_control:
+    label: "{{ item.0.nombre }}: {{ item.1 }}"
+
+- name: Desactivar el ahorro de energia y el salvapantallas de XFCE
+  ansible.builtin.template:
+    src: "{{ item.1 }}.j2"
+    dest: "/home/{{ item.0.nombre }}/.config/xfce4/xfconf/xfce-perchannel-xml/{{ item.1 }}"
+    owner: "{{ item.0.nombre }}"
+    group: "{{ item.0.nombre }}"
+    mode: "0644"
+    force: false
+  loop: >-
+    {{ usuarios_lab | product([
+         'xfce4-power-manager.xml',
+         'xfce4-screensaver.xml',
+         'xfwm4.xml',
+       ]) | list }}
+  loop_control:
+    label: "{{ item.0.nombre }}: {{ item.1 }}"
+  notify: sesiones vnc obsoletas
+
+
+##############################################################################
+# Autorizacion de colord
+##############################################################################
+
+- name: Consultar la version de polkit
+  ansible.builtin.command: pkaction --version
+  register: polkit_version_cmd
+  changed_when: false
+
+- name: Extraer la version de polkit
+  ansible.builtin.set_fact:
+    polkit_version: >-
+      {{ polkit_version_cmd.stdout
+         | regex_search('[0-9]+(?:\.[0-9]+)+')
+         | default('', true) }}
+
+- name: Comprobar que polkit usa reglas pkla
+  ansible.builtin.assert:
+    that:
+      - polkit_version | length > 0
+      - polkit_version | length > 0 and
+        polkit_version is version('0.106', '<')
+    fail_msg: >-
+      Se detecto polkit {{ polkit_version | default('desconocido', true) }}.
+      Este proyecto objetivo es Ubuntu 22.04 con polkit 0.105 y usa reglas
+      .pkla. No se escribio una regla incompatible; prepara una .rules para la
+      version instalada antes de continuar.
+
+- name: Crear el directorio local de reglas de polkit
+  ansible.builtin.file:
+    path: /etc/polkit-1/localauthority/50-local.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Autorizar colord para el grupo del laboratorio
+  ansible.builtin.template:
+    src: 50-colord-aularemota.pkla.j2
+    dest: /etc/polkit-1/localauthority/50-local.d/50-colord-aularemota.pkla
+    owner: root
+    group: root
+    mode: "0644"
+  notify: sesiones vnc obsoletas
+
+
+##############################################################################
+# cgroup v2
+##############################################################################
+
+- name: Consultar el tipo de cgroup del host
+  ansible.builtin.command: stat -fc %T /sys/fs/cgroup
+  register: cgroup_tipo
+  changed_when: false
+
+- name: Comprobar que los limites VNC pueden usar cgroup v2
+  ansible.builtin.assert:
+    that: cgroup_tipo.stdout | trim == 'cgroup2fs'
+    fail_msg: >-
+      El host usa {{ cgroup_tipo.stdout | trim }} en vez de cgroup v2.
+      No se instalaron limites que podrian comportarse de forma distinta.
+
+
+##############################################################################
+# systemd
+##############################################################################
+
+- name: Instalar la unit de systemd de cada sesion VNC
+  ansible.builtin.template:
+    src: vncserver.service.j2
+    dest: "/etc/systemd/system/vncserver-{{ item.nombre }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ usuarios_lab }}"
+  loop_control:
+    label: "vncserver-{{ item.nombre }} (:{{ item.display }})"
+  notify: sesiones vnc obsoletas
+
+- name: Habilitar y arrancar las sesiones VNC
+  ansible.builtin.systemd_service:
+    name: "vncserver-{{ item.nombre }}.service"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop: "{{ usuarios_lab }}"
+  loop_control:
+    label: "vncserver-{{ item.nombre }}"
+
+# El primer arranque de vncserver escupe un error de xkbcomp. Es inofensivo y
+# la sesion funciona igual, asi que no se trata como fallo. Esta comprobacion
+# valida lo unico que importa de verdad: que el puerto esta escuchando en la
+# interfaz de red y no solo en loopback, que es lo que necesita guacd.
+- name: Comprobar que cada display escucha donde guacd puede alcanzarlo
+  ansible.builtin.wait_for:
+    host: "{{ lab_ip_privada }}"
+    port: "{{ 5900 + item.display }}"
+    timeout: 60
+  loop: "{{ usuarios_lab }}"
+  loop_control:
+    label: "{{ item.nombre }} -> {{ lab_ip_privada }}:{{ 5900 + item.display }}"

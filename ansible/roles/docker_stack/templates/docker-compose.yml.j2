@@ -1,0 +1,131 @@
+##############################################################################
+# Gestionado por Ansible (rol docker_stack). No editar a mano en el host.
+#
+# UN SOLO proyecto de compose para todos los servicios. Esto importa: compose
+# crea una red por defecto compartida entre ellos, y por eso Nginx Proxy
+# Manager puede resolver "guacamole_web" por nombre de contenedor sin publicar
+# ningun puerto.
+#
+# Las imagenes van fijadas por DIGEST, no por tag. Es el conjunto exacto
+# que estaba corriendo cuando se genero el dump de la base de datos. Con
+# ":latest", un rebuild dentro de seis meses podria traer un Guacamole cuyo
+# esquema no encaje con el dump.
+#
+# restart: always. Por eso el stack sobrevive a un reinicio por
+# si solo y solo las sesiones VNC necesitan units de systemd.
+##############################################################################
+x-logging: &logging-aularemota
+  driver: {{ docker_log_driver }}
+  options:
+    max-size: "{{ docker_log_max_size }}"
+    max-file: "{{ docker_log_max_file }}"
+
+services:
+
+  # El traductor: convierte VNC en el protocolo que entiende el navegador.
+  guacd:
+    image: {{ imagenes.guacd }}
+    container_name: guacd
+    restart: always
+    logging: *logging-aularemota
+
+  # La base de datos: autenticacion y permisos (RBAC) de Guacamole.
+  db:
+    image: {{ imagenes.mariadb }}
+    container_name: guacamole_db
+    restart: always
+    logging: *logging-aularemota
+    environment:
+      MYSQL_ROOT_PASSWORD: "{{ mysql_root_password }}"
+      MYSQL_DATABASE: "{{ mysql_database }}"
+      MYSQL_USER: "{{ mysql_user }}"
+      MYSQL_PASSWORD: "{{ mysql_user_password }}"
+    volumes:
+      # MariaDB ejecuta los .sql de este directorio SOLO cuando el directorio
+      # de datos esta vacio. Ese guard es lo que hace que relanzar el playbook
+      # no pise nunca los cambios hechos a mano en Guacamole.
+      - ./init:/docker-entrypoint-initdb.d
+      - ./db_data:/var/lib/mysql
+      - ./mariadb_conf/99-aularemota.cnf:/etc/mysql/conf.d/99-aularemota.cnf:ro
+
+  # El portal web.
+  guacamole:
+    image: {{ imagenes.guacamole }}
+    container_name: guacamole_web
+    restart: always
+    mem_limit: "{{ guacamole_mem_limit }}"
+    logging: *logging-aularemota
+    ports:
+{% if guacamole_expuesto | default(false) and proxy_activo != 'caddy' %}
+      # Publicado en todas las interfaces porque la app movil abre el portal
+      # dentro de una vista web y tiene que alcanzarlo desde fuera. Lo que
+      # protege el puerto es el security group mas el propio login de
+      # Guacamole; no hay acceso anonimo.
+      #
+      # DEUDA CONOCIDA: va en HTTP plano. Al pasarlo por Nginx Proxy Manager
+      # con TLS, pon guacamole_expuesto en false y cierra el 8080 en el
+      # security group; la app seguira funcionando cambiando la direccion.
+      - "8080:8080"
+{% else %}
+      # Publicado SOLO en loopback. Nginx Proxy Manager no lo necesita (le
+      # llega por la red interna de Docker) y Caddy tampoco. Dejarlo asi
+      # permite probar
+      # con un tunel SSH sin exponer nada:
+      #   ssh -L 8080:127.0.0.1:8080 ubuntu@{{ lab_fqdn }}
+      - "127.0.0.1:8080:8080"
+{% endif %}
+    environment:
+      GUACD_HOSTNAME: guacd
+      MYSQL_HOSTNAME: db
+      MYSQL_DATABASE: "{{ mysql_database }}"
+      MYSQL_USER: "{{ mysql_user }}"
+      MYSQL_PASSWORD: "{{ mysql_user_password }}"
+      JAVA_OPTS: "{{ guacamole_java_opts }}"
+{% if proxy_activo == 'caddy' %}
+      # Solo confiar en cabeceras cuando el 8080 esta aislado en loopback.
+      REMOTE_IP_VALVE_ENABLED: "true"
+{% endif %}
+    depends_on:
+      - db
+      - guacd
+
+  # El recepcionista: termina el TLS y hace de reverse proxy.
+  npm:
+    image: {{ imagenes.npm }}
+    container_name: nginx_proxy
+    restart: always
+    profiles: ["npm"]
+    logging: *logging-aularemota
+{% if proxy_activo == 'npm' %}
+    ports:
+      # El 80 abierto es obligatorio para la validacion HTTP-01 de Let's
+      # Encrypt, tanto para emitir como para renovar cada 90 dias.
+      - "80:80"
+      - "81:81"
+      - "443:443"
+{% endif %}
+    volumes:
+      - ./npm_data:/data
+      - ./npm_letsencrypt:/etc/letsencrypt
+    depends_on:
+      - guacamole
+
+  # Caddy queda preparado en paralelo y solo se arranca con el perfil caddy.
+  # NPM permanece definido con sus datos intactos para un rollback inmediato.
+  caddy:
+    image: {{ imagenes.caddy }}
+    container_name: caddy
+    restart: always
+    profiles: ["caddy"]
+    logging: *logging-aularemota
+{% if proxy_activo == 'caddy' %}
+    ports:
+      - "80:80"
+      - "443:443"
+{% endif %}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy_data:/data
+      - ./caddy_config:/config
+    depends_on:
+      - guacamole

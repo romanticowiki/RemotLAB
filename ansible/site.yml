@@ -1,0 +1,136 @@
+##############################################################################
+# AulaRemota - playbook principal
+#
+#   cd ansible && ansible-playbook site.yml
+#
+# Junto con "terraform apply" reconstruye el laboratorio entero desde cero.
+# Cualquier paso fuera de esos dos comandos es deuda tecnica.
+#
+# Por fases (para verificar antes de seguir):
+#   ansible-playbook site.yml --tags base
+#   ansible-playbook site.yml --tags tuning
+#   ansible-playbook site.yml --tags usuarios,compartido,vnc
+#   ansible-playbook site.yml --tags docker      # stack y proxy elegido
+#   ansible-playbook site.yml --tags caddy       # solo el proxy
+#   ansible-playbook site.yml --tags docker,api  # tambien actualiza la app
+#   ansible-playbook site.yml --tags gns3
+#
+# ORDEN DE LOS ROLES: gns3 va ANTES que vnc a proposito.
+#
+# Los grupos ubridge, wireshark, kvm y libvirt no existen hasta que se instalan
+# los paquetes de GNS3 (los crean sus postinst). Y una sesion VNC ya arrancada
+# no hereda grupos que se anaden despues: GNS3 lanzado desde ese XFCE fallaria
+# al tocar ubridge. Arrancando VNC al final, las sesiones nacen con el conjunto
+# de grupos definitivo. En comandos.txt esto no se ve porque los pasos se
+# hicieron a mano y en ese mismo orden.
+#
+# Para las ejecuciones parciales (--tags) que rompan ese orden, el rol gns3
+# notifica el handler "sesiones vnc obsoletas" y las sesiones se reinician.
+##############################################################################
+---
+- name: AulaRemota - laboratorio remoto GNS3 sobre Guacamole
+  hosts: lab
+  become: true
+
+  pre_tasks:
+    # cloud-init sigue instalando paquetes durante el primer par de minutos de
+    # vida de la instancia. Si Ansible llega antes, el primer apt muere con
+    # "Could not get lock /var/lib/dpkg/lock-frontend". Esto lo espera.
+    - name: Esperar a que cloud-init termine (evita el lock de dpkg)
+      ansible.builtin.command: cloud-init status --wait
+      changed_when: false
+      failed_when: false
+      tags: [always]
+
+    - name: Validar que no hay nombres, displays ni puertos GNS3 repetidos
+      ansible.builtin.assert:
+        that:
+          - usuarios_lab | map(attribute='nombre') | list | unique | length
+            == usuarios_lab | length
+          - usuarios_lab | map(attribute='display') | list | unique | length
+            == usuarios_lab | length
+          - usuarios_lab | map(attribute='gns3_puerto') | list | unique | length
+            == usuarios_lab | length
+        fail_msg: >-
+          Hay valores repetidos en usuarios_lab (group_vars/lab/main.yml).
+          Dos usuarios con el mismo display comparten escritorio; dos con el
+          mismo puerto de GNS3 hacen que el segundo servidor no arranque.
+        success_msg: "Mapeo sin colisiones de nombre, display ni puerto GNS3"
+      tags: [always]
+
+    # O(n^2) sobre la lista. Con 4 usuarios son 16 comprobaciones y con 20 son
+    # 400: irrelevante, y se lee mucho mejor que hacerlo con filtros Jinja.
+    - name: Validar que los rangos de consola y UDP de GNS3 no se solapan
+      ansible.builtin.assert:
+        that:
+          - item.0.nombre == item.1.nombre or
+            item.0.consola[1] < item.1.consola[0] or
+            item.1.consola[1] < item.0.consola[0]
+          - item.0.nombre == item.1.nombre or
+            item.0.udp[1] < item.1.udp[0] or
+            item.1.udp[1] < item.0.udp[0]
+        fail_msg: >-
+          Los rangos de {{ item.0.nombre }} y {{ item.1.nombre }} se solapan.
+          Dos instancias de GNS3 pelearian por el mismo puerto y las consolas
+          de los nodos irian al laboratorio equivocado.
+      loop: "{{ usuarios_lab | product(usuarios_lab) | list }}"
+      loop_control:
+        label: "{{ item.0.nombre }} vs {{ item.1.nombre }}"
+      tags: [always]
+
+    - name: Validar que cada rango esta bien formado (inicio < fin)
+      ansible.builtin.assert:
+        that:
+          - item.consola[0] < item.consola[1]
+          - item.udp[0] < item.udp[1]
+          - item.display >= 1
+      loop: "{{ usuarios_lab }}"
+      loop_control:
+        label: "{{ item.nombre }}"
+      tags: [always]
+
+  roles:
+    - role: base
+      tags: [base]
+
+    # Ajustes del host que deben existir antes de crear los contenedores.
+    - role: tuning_host
+      tags: [tuning]
+
+    - role: usuarios
+      tags: [usuarios]
+
+    - role: compartido
+      tags: [compartido]
+
+    - role: gns3
+      tags: [gns3]
+
+    - role: vnc
+      tags: [vnc]
+
+    - role: docker_stack
+      tags: [docker]
+
+    # Prepara Caddy y arranca solo el proxy elegido. Va despues del stack para
+    # poder validar su Caddyfile con Docker y antes de la API, que lo vigila.
+    - role: caddy
+      tags: [docker, caddy]
+
+    # Va al final: consulta el estado de los contenedores y de las sesiones
+    # VNC, asi que necesita que ya existan.
+    - role: api
+      tags: [api]
+
+  post_tasks:
+    # Va al final, cuando ya se ha instalado TODO.
+    #
+    # El rol gns3 arrastra paquetes que quedan huerfanos (entre ellos un kernel
+    # generico completo, ~300 MB). Si la limpieza corriera dentro del rol base,
+    # que se ejecuta antes, no podria verlos todavia y una construccion desde
+    # cero daria changed=1 en la segunda ejecucion en vez de changed=0.
+    - name: Limpiar dependencias que ya no hacen falta
+      ansible.builtin.apt:
+        autoremove: true
+        purge: true
+      tags: [base]

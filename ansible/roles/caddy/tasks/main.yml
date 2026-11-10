@@ -1,0 +1,130 @@
+##############################################################################
+# Rol: caddy
+#
+# Prepara Caddy, valida el fichero y activa un solo proxy. NPM nunca se borra:
+# sus volumenes y su definicion quedan listos para volver en segundos.
+##############################################################################
+---
+
+- name: Validar el proxy solicitado
+  ansible.builtin.assert:
+    that: proxy_activo in ['npm', 'caddy']
+    fail_msg: "proxy_activo solo puede ser npm o caddy"
+
+# El modulo devuelve exists=false si falta el contenedor; un error real del
+# daemon sigue siendo un fallo y no se confunde con una primera instalacion.
+- name: Consultar el estado de los proxies antes de modificarlos
+  community.docker.docker_container_info:
+    name: "{{ item }}"
+  loop:
+    - caddy
+    - nginx_proxy
+  register: caddy_contenedores_previos
+
+- name: Determinar si hay una transicion de proxy
+  ansible.builtin.set_fact:
+    caddy_requiere_respaldo: >-
+      {{ proxy_activo == 'caddy' and not
+         (caddy_contenedores_previos.results[0].exists and
+          caddy_contenedores_previos.results[0].container.State.Running) }}
+    caddy_proxy_inactivo_existe: >-
+      {{ caddy_contenedores_previos.results[0 if proxy_activo == 'npm' else 1].exists }}
+
+- name: Consultar el respaldo de NPM en el nodo de control
+  ansible.builtin.stat:
+    path: "{{ dir_respaldos_local }}/npm-state.tar.gz"
+    get_checksum: false
+    get_mime: false
+  delegate_to: localhost
+  become: false
+  register: caddy_npm_respaldo
+  when: caddy_requiere_respaldo
+
+- name: Exigir un respaldo reciente de NPM antes de migrar
+  ansible.builtin.assert:
+    that:
+      - caddy_npm_respaldo.stat.exists
+      - caddy_npm_respaldo.stat.isreg | default(false)
+      - caddy_npm_respaldo.stat.size | default(0) | int > 0
+      - caddy_npm_backup_max_age_seconds | int > 0
+      - (now(utc=true).timestamp() - (caddy_npm_respaldo.stat.mtime | default(0) | float)) >= 0
+      - (now(utc=true).timestamp() - (caddy_npm_respaldo.stat.mtime | default(0) | float))
+        <= caddy_npm_backup_max_age_seconds | int
+    fail_msg: >-
+      Falta un respaldo regular, no vacio y reciente de NPM en
+      {{ dir_respaldos_local }}/npm-state.tar.gz (maximo
+      {{ caddy_npm_backup_max_age_seconds }} segundos).
+      Conserva proxy_activo=npm y ejecuta desde ansible:
+      ansible-playbook playbooks/backup-npm.yml -e proxy_activo=npm
+      antes de seleccionar caddy. No se modifico el proxy en este rol.
+  when: caddy_requiere_respaldo
+
+- name: Crear los directorios persistentes de Caddy
+  ansible.builtin.file:
+    path: "{{ compose_dir }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - caddy_data
+    - caddy_config
+
+- name: Escribir el Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ compose_dir }}/Caddyfile"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: recargar caddy
+
+# Se valida antes de detener el proxy anterior. docker run puede descargar la
+# imagen fijada por digest, pero no abre puertos ni toca el servicio activo.
+- name: Validar el Caddyfile antes del cambio de proxy
+  ansible.builtin.command:
+    cmd: >-
+      docker run --rm
+      -v {{ compose_dir }}/Caddyfile:/etc/caddy/Caddyfile:ro
+      {{ imagenes.caddy }}
+      caddy validate --config /etc/caddy/Caddyfile
+  changed_when: false
+  when: proxy_activo == 'caddy'
+
+- name: Detener el proxy inactivo
+  community.docker.docker_compose_v2:
+    project_src: "{{ compose_dir }}"
+    state: stopped
+    services:
+      - "{{ 'caddy' if proxy_activo == 'npm' else 'npm' }}"
+    profiles:
+      - "{{ 'caddy' if proxy_activo == 'npm' else 'npm' }}"
+  when: caddy_proxy_inactivo_existe
+
+- name: Arrancar el proxy activo
+  community.docker.docker_compose_v2:
+    project_src: "{{ compose_dir }}"
+    state: present
+    pull: missing
+    services:
+      - "{{ proxy_activo }}"
+    profiles:
+      - "{{ proxy_activo }}"
+
+- name: Aplicar una recarga pendiente de Caddy
+  ansible.builtin.meta: flush_handlers
+
+- name: Validar Caddy dentro del contenedor activo
+  ansible.builtin.command: >-
+    docker exec caddy caddy validate --config /etc/caddy/Caddyfile
+  changed_when: false
+  when: proxy_activo == 'caddy'
+
+- name: Comprobar que el proxy activo esta ejecutandose
+  ansible.builtin.command: >-
+    docker inspect --format={{ '{{' }}.State.Status{{ '}}' }}
+    {{ 'caddy' if proxy_activo == 'caddy' else 'nginx_proxy' }}
+  register: caddy_proxy_estado
+  changed_when: false
+  failed_when: caddy_proxy_estado.stdout | trim != 'running'

@@ -1,0 +1,6 @@
+---
+# Limites iniciales conservadores para cada escritorio remoto. Se ajustan con
+# systemd-cgtop despues de probar GNS3 con una carga representativa.
+vnc_memory_high: "320M"
+vnc_cpu_quota: "60%"
+vnc_tasks_max: 512

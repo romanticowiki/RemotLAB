@@ -1,0 +1,40 @@
+##############################################################################
+# Gestionado por Ansible (rol api).
+#
+# API de solo lectura para la app movil de supervision.
+##############################################################################
+[Unit]
+Description=API de supervision de Aula Remota
+Documentation=file:///opt/aula-remota-api/api.py
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/aula-remota-api/api.py
+EnvironmentFile=/etc/aula-remota-api.env
+Restart=on-failure
+RestartSec=5
+
+# Corre como root porque consulta systemd y el socket de Docker. A cambio, se
+# le recorta todo lo que no necesita: no puede escribir en ningun sitio, no ve
+# los /home y no puede escalar privilegios. Es de solo lectura por diseno, y
+# estas restricciones lo obligan a serlo tambien por configuracion.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryMax=96M
+
+# Solo puede abrir sockets de red normales. Sin esto podria, por ejemplo,
+# abrir sockets raw.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

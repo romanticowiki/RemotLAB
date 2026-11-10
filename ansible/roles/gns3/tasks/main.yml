@@ -1,0 +1,159 @@
+##############################################################################
+# Rol: gns3
+#
+# GNS3 multi-tenant: cada usuario con su servidor y sus rangos de puertos.
+#
+# En el MVP no se suben imagenes de Cisco (IOL ni Dynamips). Se demuestra con
+# VPCS y los switches integrados, que no necesitan licencia.
+##############################################################################
+---
+
+# El modulo debconf necesita las herramientas de consulta para poder leer el
+# valor actual y ser idempotente.
+- name: Instalar las herramientas de debconf
+  ansible.builtin.apt:
+    name: debconf-utils
+    state: present
+
+##############################################################################
+# Las "pantallas moradas"
+#
+# ubridge y wireshark abren un dialogo de debconf preguntando si los usuarios
+# sin privilegios pueden capturar paquetes y manejar puentes de red. En una
+# instalacion a mano se contesta <Yes> y ya. En Ansible no hay nadie para
+# contestar: apt se queda esperando entrada y el playbook no termina nunca.
+#
+# Esto responde por adelantado. Va OBLIGATORIAMENTE antes del apt install: una
+# vez el paquete esta configurado, la respuesta ya no se consulta.
+##############################################################################
+
+- name: Responder por adelantado a wireshark (captura sin ser root)
+  ansible.builtin.debconf:
+    name: wireshark-common
+    question: wireshark-common/install-setuid
+    vtype: boolean
+    value: "true"
+
+- name: Responder por adelantado a ubridge (puentes sin ser root)
+  ansible.builtin.debconf:
+    name: ubridge
+    question: ubridge/install-setuid
+    vtype: boolean
+    value: "true"
+
+# Ansible avisa de que apt_repository esta obsoleto en favor de
+# deb822_repository. Se conserva a proposito: apt_repository entiende el atajo
+# "ppa:" y se baja solo la clave de firma desde Launchpad, mientras que
+# deb822_repository obliga a escribir a mano la URI y la clave GPG del PPA.
+# El aviso es solo eso; la retirada no llega hasta ansible-core 2.25.
+- name: Anadir el PPA de GNS3
+  ansible.builtin.apt_repository:
+    repo: ppa:gns3/ppa
+    state: present
+    update_cache: true
+
+- name: Instalar GNS3
+  ansible.builtin.apt:
+    name:
+      - gns3-gui
+      - gns3-server
+    state: present
+  environment:
+    # Cinturon y tirantes: aunque el pre-seed de arriba ya evita los dialogos,
+    # esto garantiza que ningun paquete arrastrado como dependencia abra uno.
+    DEBIAN_FRONTEND: noninteractive
+
+
+##############################################################################
+# La version manda sobre la ruta del fichero de configuracion
+#
+# Mi configuracion va a ~/.config/GNS3/2.2/gns3_server.conf. Si el PPA sirve
+# otra rama, el fichero acabaria en la ruta equivocada: reaparece el setup
+# wizard y vuelven las colisiones de puertos, y lo hace EN SILENCIO, sin que
+# ninguna tarea falle. Por eso se detecta la version real y se aborta si no es
+# la esperada, en vez de dar por hecha una constante.
+##############################################################################
+
+- name: Consultar la version instalada de gns3-server
+  ansible.builtin.command: dpkg-query -W -f='${Version}' gns3-server
+  register: gns3_pkg
+  changed_when: false
+
+- name: Deducir la rama de configuracion a partir de la version
+  ansible.builtin.set_fact:
+    gns3_rama: "{{ gns3_pkg.stdout | regex_search('^([0-9]+\\.[0-9]+)', '\\1') | first }}"
+
+- name: Abortar si el PPA ha servido una rama distinta a la esperada
+  ansible.builtin.assert:
+    that: gns3_rama == gns3_version
+    fail_msg: >-
+      El PPA ha instalado GNS3 {{ gns3_pkg.stdout }} (rama {{ gns3_rama }}) pero
+      group_vars/lab/main.yml dice gns3_version={{ gns3_version }}.
+      gns3_server.conf iria a ~/.config/GNS3/{{ gns3_version }}/ y GNS3 leeria
+      de ~/.config/GNS3/{{ gns3_rama }}/: volverian el setup wizard y las
+      colisiones de puertos sin ningun error visible.
+      Ajusta gns3_version o fija la version del paquete.
+    success_msg: "GNS3 {{ gns3_pkg.stdout }} -> configuracion en ~/.config/GNS3/{{ gns3_rama }}/"
+
+
+##############################################################################
+# Grupos del kernel
+#
+# Estos grupos los crean los postinst de los paquetes que se acaban de
+# instalar, por eso esta tarea no puede vivir en el rol usuarios.
+#
+# append: true es imprescindible para no borrar el grupo compartido.
+##############################################################################
+
+- name: Anadir los usuarios a los grupos que necesita GNS3
+  ansible.builtin.user:
+    name: "{{ item.nombre }}"
+    groups:
+      - ubridge      # crear puentes de red sin ser root
+      - wireshark    # capturar paquetes sin ser root
+      - kvm          # aceleracion de las maquinas QEMU
+      - libvirt
+    append: true
+  loop: "{{ usuarios_lab }}"
+  loop_control:
+    label: "{{ item.nombre }}"
+  # Una sesion VNC que ya estuviera corriendo no hereda estos grupos: los
+  # procesos arrastran los que tenian al nacer. GNS3 lanzado desde ese
+  # escritorio fallaria al tocar ubridge. Reiniciar la sesion lo arregla.
+  notify: sesiones vnc obsoletas
+
+
+##############################################################################
+# Configuracion por usuario
+##############################################################################
+
+- name: Crear la cadena de directorios de configuracion de GNS3
+  ansible.builtin.file:
+    path: "/home/{{ item.0.nombre }}/{{ item.1 }}"
+    state: directory
+    owner: "{{ item.0.nombre }}"
+    group: "{{ item.0.nombre }}"
+    mode: "0755"
+  loop: >-
+    {{ usuarios_lab | product([
+         '.config',
+         '.config/GNS3',
+         '.config/GNS3/' ~ gns3_rama,
+       ]) | list }}
+  loop_control:
+    label: "{{ item.0.nombre }}: {{ item.1 }}"
+
+- name: Instalar gns3_server.conf de cada usuario
+  ansible.builtin.template:
+    src: gns3_server.conf.j2
+    dest: "/home/{{ item.nombre }}/.config/GNS3/{{ gns3_rama }}/gns3_server.conf"
+    owner: "{{ item.nombre }}"
+    group: "{{ item.nombre }}"
+    mode: "0644"
+    # gns3-server reescribe este fichero al cerrarse, anadiendo sus propias
+    # secciones. Con una plantilla normal la segunda ejecucion saldria siempre
+    # "changed". Ansible lo siembra y el programa manda a partir de ahi.
+    force: false
+  loop: "{{ usuarios_lab }}"
+  loop_control:
+    label: "{{ item.nombre }} -> puerto {{ item.gns3_puerto }}, consolas {{ item.consola[0] }}-{{ item.consola[1] }}"

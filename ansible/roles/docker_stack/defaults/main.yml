@@ -1,0 +1,16 @@
+---
+# UID del usuario mysql dentro de la imagen oficial de MariaDB. Es estable
+# entre versiones (10.x y 11.x). Se usa para que el dump de Guacamole sea
+# legible por el proceso que lo tiene que ejecutar y por nadie mas.
+# Comprobable con:  docker exec guacamole_db id mysql
+mariadb_uid: 999
+
+# La JVM queda por debajo del limite del contenedor. SerialGC usa un solo hilo
+# de recoleccion y evita competir con los escritorios en una maquina de 2 vCPU.
+guacamole_java_opts: >-
+  -Xms128m -Xmx256m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC
+guacamole_mem_limit: "384m"
+
+# MariaDB se ajusta con su .cnf, sin imponer un mem_limit sin mediciones.
+# mem_limit es duro y puede matar mysqld; MemoryHigh en VNC aplica presion de
+# memoria sin ese corte. Guacamole conserva su limite JVM y requiere medir RSS.

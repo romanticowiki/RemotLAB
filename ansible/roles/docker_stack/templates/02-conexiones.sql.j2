@@ -1,0 +1,38 @@
+-- ############################################################################
+-- Conexiones VNC de Guacamole, generadas desde usuarios_lab.
+--
+-- NO EDITAR A MANO: este fichero lo genera Ansible en cada despliegue desde
+-- ansible/inventory/group_vars/lab/main.yml. Para cambiar un nombre o un
+-- puerto, tocalo alli.
+--
+-- MariaDB solo ejecuta este fichero con el datadir VACIO. Si la base ya
+-- existe, anadir un usuario aqui no lo crea en Guacamole: hazlo por la
+-- interfaz web, o borra db_data y vuelve a desplegar.
+--
+-- El usuario guacadmin lo crea el esquema oficial (01-esquema.sql) con la
+-- contrasena por defecto "guacadmin". CAMBIALA en el primer inicio de sesion.
+-- ############################################################################
+
+{% for u in usuarios_lab %}
+-- ---------------------------------------------------------------------------
+-- {{ u.conexion }}  ->  {{ u.nombre }} ({{ u.rol }}), display :{{ u.display }}
+-- ---------------------------------------------------------------------------
+INSERT INTO guacamole_connection (connection_name, protocol)
+VALUES ('{{ u.conexion }}', 'vnc');
+
+SET @cid = LAST_INSERT_ID();
+
+INSERT INTO guacamole_connection_parameter (connection_id, parameter_name, parameter_value) VALUES
+  (@cid, 'hostname', '{{ lab_ip_privada }}'),
+  (@cid, 'port',     '{{ 5900 + u.display }}'),
+  (@cid, 'color-depth', '16'),
+  (@cid, 'password', '{{ pw_vnc[u.nombre] }}');
+
+-- guacadmin ve todas las conexiones. Cada alumno se crea despues, por la
+-- interfaz web, y se le asigna unicamente la suya.
+INSERT INTO guacamole_connection_permission (entity_id, connection_id, permission)
+SELECT entity_id, @cid, 'READ'
+FROM guacamole_entity
+WHERE name = 'guacadmin' AND type = 'USER';
+
+{% endfor %}

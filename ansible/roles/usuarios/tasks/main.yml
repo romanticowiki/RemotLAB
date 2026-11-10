@@ -1,0 +1,54 @@
+##############################################################################
+# Rol: usuarios
+#
+# Crea las identidades POSIX. La pertenencia a los grupos del kernel que
+# necesita GNS3 (ubridge, wireshark, kvm, libvirt) NO se gestiona aqui: esos
+# grupos no existen hasta que se instalan los paquetes de GNS3, asi que los
+# gestiona el rol gns3.
+##############################################################################
+---
+
+- name: Crear el grupo compartido entre maestro y alumnos
+  ansible.builtin.group:
+    name: "{{ grupo_compartido }}"
+    state: present
+
+- name: Crear los usuarios del laboratorio
+  ansible.builtin.user:
+    name: "{{ item.nombre }}"
+    shell: /bin/bash
+    create_home: true
+    # El hash se calcula con un salt FIJO sacado de secrets.yml. Sin salt, el filtro
+    # genera uno aleatorio en cada ejecucion, el hash sale distinto cada vez y
+    # esta tarea reporta "changed" para siempre. Con salt fijo es determinista
+    # y la segunda ejecucion sale changed=0.
+    password: "{{ pw_linux[item.nombre] | password_hash('sha512', salt_linux) }}"
+    # append es OBLIGATORIO, no una preferencia. Sin el, esta tarea reescribe
+    # la lista de grupos secundarios y en cada ejecucion arrancaria a los
+    # usuarios de ubridge, wireshark, kvm y libvirt, que anade el rol gns3.
+    # GNS3 dejaria de funcionar tras cada playbook sin ningun error visible.
+    groups: ["{{ grupo_compartido }}"]
+    append: true
+    state: present
+  loop: "{{ usuarios_lab }}"
+  loop_control:
+    label: "{{ item.nombre }} (display :{{ item.display }}, VNC {{ 5900 + item.display }})"
+  no_log: true
+
+# El modulo user crea el home con 0755 y el modulo no permite fijar el modo,
+# asi que hay que declararlo aparte.
+#
+# Con 0755 cualquier alumno puede leer el home de otro: sus .gns3project, sus
+# practicas y sus apuntes. En un proyecto cuyo tema es el aislamiento de
+# usuarios eso es una contradiccion, y arreglar el chmod 777 del directorio
+# compartido sin arreglar esto deja el agujero a medias.
+- name: Cerrar los directorios personales al resto de usuarios
+  ansible.builtin.file:
+    path: "/home/{{ item.nombre }}"
+    state: directory
+    owner: "{{ item.nombre }}"
+    group: "{{ item.nombre }}"
+    mode: "0750"
+  loop: "{{ usuarios_lab }}"
+  loop_control:
+    label: "{{ item.nombre }}"

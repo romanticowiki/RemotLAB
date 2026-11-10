@@ -1,0 +1,56 @@
+-- ###########################################################################
+-- Usuario "{{ guac_usuario_app }}" de Guacamole: la identidad con la que la API
+-- abre escritorios en nombre del administrador desde la app movil.
+--
+-- POR QUE NO SE USA guacadmin
+-- ---------------------------
+-- Un token de Guacamole no distingue entre "ver un escritorio" y "administrar
+-- Guacamole": es la sesion entera. Si la API pidiera el token como guacadmin,
+-- cualquiera con el token de la API tendria de hecho el panel de Guacamole
+-- completo, con crear usuarios y cambiar contrasenas incluidos.
+--
+-- Este usuario recibe SOLO permiso READ sobre las conexiones. Ni un permiso de
+-- sistema, ni ADMINISTER sobre nada. Puede mirar y nada mas.
+--
+-- POR QUE ESTE FICHERO NO VA EN docker-entrypoint-initdb.d
+-- --------------------------------------------------------
+-- Los .sql de ese directorio solo se ejecutan con el datadir vacio. Este tiene
+-- que aplicarse tambien sobre una base que ya existe, porque la contrasena se
+-- regenera cada vez que se relanza el rol. Por eso se ejecuta a mano y por eso
+-- todo aqui es idempotente.
+-- ###########################################################################
+
+-- Un salt nuevo en cada ejecucion. Guacamole guarda SHA-256 de la contrasena
+-- concatenada con el salt en hexadecimal y mayusculas; el HEX() de MariaDB ya
+-- devuelve mayusculas, asi que encaja tal cual.
+SET @sal = UNHEX(SHA2(UUID(), 256));
+SET @hash = UNHEX(SHA2(CONCAT('{{ guac_supervisor_password }}', HEX(@sal)), 256));
+
+-- La entidad es la fila que da identidad; el usuario cuelga de ella.
+-- El UPDATE de un campo por su propio valor a traves de LAST_INSERT_ID() es el
+-- truco estandar de MySQL para recuperar el id existente sin una consulta
+-- extra cuando la fila ya estaba.
+INSERT INTO guacamole_entity (name, type)
+VALUES ('{{ guac_usuario_app }}', 'USER')
+ON DUPLICATE KEY UPDATE entity_id = LAST_INSERT_ID(entity_id);
+
+SET @eid = LAST_INSERT_ID();
+
+INSERT INTO guacamole_user (entity_id, password_salt, password_hash, password_date)
+VALUES (@eid, @sal, @hash, NOW())
+ON DUPLICATE KEY UPDATE
+  password_salt = @sal,
+  password_hash = @hash,
+  password_date = NOW();
+
+-- Lectura sobre todas las conexiones que existan ahora. INSERT IGNORE porque
+-- la clave primaria es (entity_id, connection_id, permission): repetir el
+-- permiso no es un error, simplemente no anade nada.
+INSERT IGNORE INTO guacamole_connection_permission (entity_id, connection_id, permission)
+SELECT @eid, connection_id, 'READ' FROM guacamole_connection;
+
+-- Que se vea a si mismo. Sin esto Guacamole acepta el login pero la interfaz
+-- se queda a medias al intentar leer el perfil del usuario conectado.
+INSERT IGNORE INTO guacamole_user_permission (entity_id, affected_user_id, permission)
+SELECT @eid, u.user_id, 'READ'
+FROM guacamole_user u WHERE u.entity_id = @eid;

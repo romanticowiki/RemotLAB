@@ -1,0 +1,2015 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AulaRemota — Laboratorios de Redes en la Nube</title>
+  <link rel="icon" href="favicon.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,300&family=DM+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;0,9..144,900;1,9..144,300;1,9..144,700&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --coral:   #fe7170;
+      --cyan:    #04afc8;
+      --white:   #ffffff;
+      --black:   #0f0f0f;
+      --gray-50: #f8f8f8;
+      --gray-100:#f0f0f0;
+      --gray-200:#e4e4e4;
+      --gray-400:#a0a0a0;
+      --gray-600:#555555;
+      --coral-light: rgba(254,113,112,.10);
+      --cyan-light:  rgba(4,175,200,.10);
+      --cyan-mid:    rgba(4,175,200,.20);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; font-size: 16px; }
+
+    body {
+      background: var(--white);
+      color: var(--black);
+      font-family: 'DM Sans', sans-serif;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── NAV ── */
+    .nav-outer {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      justify-content: center;
+      padding: 1rem 5vw;
+      pointer-events: none;
+    }
+
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: .55rem .55rem .55rem 1.1rem;
+      background: var(--black);
+      border-radius: 100px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.18), 0 2px 8px rgba(0,0,0,.12);
+      pointer-events: all;
+      width: 100%;
+      max-width: 900px;
+      gap: 1.5rem;
+    }
+
+    .logo-wrap {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      text-decoration: none;
+      flex-shrink: 0;
+    }
+    .logo-img {
+      width: 30px;
+      height: 30px;
+      object-fit: contain;
+      filter: brightness(0) invert(1);
+    }
+
+    .logo-text {
+      font-family: 'Fraunces', serif;
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--white);
+      letter-spacing: -.01em;
+      white-space: nowrap;
+    }
+    .logo-text span { color: var(--cyan); }
+
+    .nav-links {
+      display: flex;
+      gap: 1.5rem;
+      list-style: none;
+      flex: 1;
+      justify-content: center;
+    }
+    .nav-links a {
+      font-size: .82rem;
+      color: rgba(255,255,255,.65);
+      text-decoration: none;
+      font-weight: 500;
+      transition: color .2s;
+      letter-spacing: -.01em;
+      white-space: nowrap;
+    }
+    .nav-links a:hover { color: var(--white); }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      flex-shrink: 0;
+    }
+
+    .nav-login {
+      font-size: .82rem;
+      font-weight: 500;
+      color: rgba(255,255,255,.7);
+      text-decoration: none;
+      padding: .5rem 1rem;
+      transition: color .2s;
+    }
+    .nav-login:hover { color: var(--white); }
+
+    .nav-cta {
+      font-size: .82rem;
+      font-weight: 600;
+      color: var(--black);
+      background: var(--white);
+      border: none;
+      padding: .55rem 1.2rem;
+      border-radius: 100px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background .2s, transform .15s;
+      letter-spacing: -.01em;
+      white-space: nowrap;
+    }
+    .nav-cta:hover { background: var(--gray-100); transform: translateY(-1px); }
+
+    .nav-hamburger {
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      gap: 5px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: .4rem;
+    }
+    .nav-hamburger span {
+      display: block;
+      width: 20px;
+      height: 2px;
+      background: var(--white);
+      border-radius: 2px;
+      transition: transform .3s, opacity .3s;
+    }
+    .nav-hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+    .nav-hamburger.open span:nth-child(2) { opacity: 0; }
+    .nav-hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+    .mobile-drawer {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(255,255,255,.98);
+      z-index: 150;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2.5rem;
+    }
+    .mobile-drawer.open { display: flex; }
+    .mobile-drawer a {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--gray-600);
+      text-decoration: none;
+      transition: color .2s;
+    }
+    .mobile-drawer a:hover { color: var(--cyan); }
+    .mobile-drawer .drawer-cta {
+      color: var(--white);
+      background: var(--cyan);
+      padding: .75rem 2.5rem;
+      border-radius: 6px;
+    }
+
+    /* ── MESH BACKGROUND ── */
+    .mesh-bg {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      overflow: hidden;
+      pointer-events: none;
+      background: #ffffff;
+    }
+
+    .mesh-bg canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.55;
+    }
+
+    .mesh-gradient {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 15% 10%, rgba(4,175,200,.07) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 70% at 90% 85%, rgba(254,113,112,.05) 0%, transparent 55%),
+        radial-gradient(ellipse 50% 50% at 50% 50%, rgba(4,175,200,.03) 0%, transparent 70%);
+    }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 90vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: center;
+      gap: 4rem;
+      padding: 5rem 5vw 5rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: none;
+    }
+    .hero::after {
+      content: none;
+    }
+
+    .hero-content { position: relative; z-index: 1; }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      background: var(--cyan-light);
+      color: var(--cyan);
+      border: 1px solid var(--cyan-mid);
+      border-radius: 100px;
+      font-size: .75rem;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      padding: .3rem .9rem;
+      margin-bottom: 1.75rem;
+      opacity: 0;
+      animation: fadeUp .6s .1s forwards;
+    }
+    .hero-badge .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--cyan);
+      animation: pulse 1.8s infinite;
+    }
+
+
+    .hero h1 {
+      font-family: 'Fraunces', serif;
+      font-size: clamp(2.8rem, 5.5vw, 5rem);
+      font-weight: 900;
+      line-height: 1.0;
+      letter-spacing: -.03em;
+      color: var(--black);
+      margin-bottom: 1.5rem;
+      opacity: 0;
+      animation: fadeUp .7s .2s forwards;
+    }
+    .hero h1 em {
+      font-style: italic;
+      color: var(--cyan);
+    }
+    .hero h1 .coral { color: var(--coral); font-style: normal; }
+
+    .hero-visual {
+      position: relative;
+    }
+
+    .hero-logo-visual {
+      width: 120px;
+      margin-bottom: 20px;
+      display: block;
+    }
+
+    .hero-sub {
+      font-size: 1.05rem;
+      color: var(--gray-600);
+      line-height: 1.7;
+      max-width: 480px;
+      margin-bottom: 2.5rem;
+      font-weight: 400;
+      opacity: 0;
+      animation: fadeUp .7s .35s forwards;
+    }
+
+    .hero-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .6rem;
+      margin-bottom: 2.5rem;
+      opacity: 0;
+      animation: fadeUp .6s .45s forwards;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: 6px;
+      padding: .35rem .8rem;
+      font-size: .8rem;
+      font-weight: 500;
+      color: var(--gray-600);
+    }
+    .pill-check { color: var(--cyan); font-weight: 700; }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .75rem;
+      opacity: 0;
+      animation: fadeUp .7s .5s forwards;
+    }
+    .btn-primary {
+      font-size: .9rem;
+      font-weight: 600;
+      color: var(--white);
+      background: var(--cyan);
+      border: none;
+      padding: .8rem 1.8rem;
+      border-radius: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background .2s, transform .15s, box-shadow .2s;
+      letter-spacing: -.01em;
+      box-shadow: 0 4px 16px rgba(4,175,200,.25);
+    }
+    .btn-primary:hover { background: #039db4; transform: translateY(-2px); box-shadow: 0 6px 24px rgba(4,175,200,.3); }
+
+    .btn-outline {
+      font-size: .9rem;
+      font-weight: 600;
+      color: var(--black);
+      background: var(--white);
+      border: 1.5px solid var(--gray-200);
+      padding: .8rem 1.8rem;
+      border-radius: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: border-color .2s, transform .15s;
+      letter-spacing: -.01em;
+    }
+    .btn-outline:hover { border-color: var(--cyan); color: var(--cyan); transform: translateY(-2px); }
+
+    /* ── HERO VISUAL (right side) ── */
+    .hero-visual {
+      position: relative;
+      z-index: 1;
+      opacity: 0;
+      animation: fadeLeft .9s .6s forwards;
+    }
+
+    .browser-mock {
+      background: var(--white);
+      border: 1.5px solid var(--gray-200);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 24px 80px rgba(0,0,0,.10), 0 4px 16px rgba(0,0,0,.06);
+    }
+    .browser-bar {
+      background: var(--gray-50);
+      border-bottom: 1px solid var(--gray-200);
+      padding: .7rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+    }
+    .b-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .b-dot:nth-child(1) { background: #ff5f57; }
+    .b-dot:nth-child(2) { background: #febc2e; }
+    .b-dot:nth-child(3) { background: #28c840; }
+    .b-url {
+      flex: 1;
+      background: var(--white);
+      border: 1px solid var(--gray-200);
+      border-radius: 6px;
+      padding: .3rem .8rem;
+      font-family: 'DM Mono', monospace;
+      font-size: .72rem;
+      color: var(--gray-600);
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+    }
+    .b-lock { color: var(--cyan); font-size: .8rem; }
+    .b-body {
+      padding: 1.5rem;
+      background: #1a1a2e;
+      min-height: 280px;
+      font-family: 'DM Mono', monospace;
+      font-size: .78rem;
+      line-height: 2;
+    }
+    .t-line { display: flex; gap: .6rem; align-items: flex-start; }
+    .t-prompt { color: var(--coral); }
+    .t-cmd { color: #e2e8f0; }
+    .t-out { color: #68d391; padding-left: 1.2rem; }
+    .t-comment { color: #4a5568; }
+    .t-cursor {
+      display: inline-block;
+      width: 8px; height: 1em;
+      background: var(--cyan);
+      animation: blink .9s step-end infinite;
+      vertical-align: text-bottom;
+    }
+    .guac-ui {
+      margin-top: 1rem;
+      background: #2d3748;
+      border-radius: 6px;
+      padding: .8rem;
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+    }
+    .guac-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); animation: pulse 1.8s infinite; }
+    .guac-label { font-size: .7rem; color: #a0aec0; }
+    .guac-status { font-size: .7rem; color: var(--cyan); margin-left: auto; }
+
+    @media (max-width: 900px) { .hero-visual { display: none; } }
+
+    /* ── STATS BAR ── */
+    .stats-bar {
+      display: flex;
+      flex-wrap: wrap;
+      border-top: 1px solid var(--gray-200);
+      border-bottom: 1px solid var(--gray-200);
+      padding: 2.5rem 5vw;
+      background: var(--gray-50);
+    }
+    .stat-item {
+      flex: 1;
+      min-width: 130px;
+      padding: 0 2rem;
+      border-right: 1px solid var(--gray-200);
+    }
+    .stat-item:first-child { padding-left: 0; }
+    .stat-item:last-child { border-right: none; }
+    .stat-val {
+      font-family: 'Fraunces', serif;
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: var(--cyan);
+      line-height: 1;
+      letter-spacing: -.03em;
+    }
+    .stat-label {
+      font-size: .75rem;
+      color: var(--gray-400);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin-top: .3rem;
+      font-weight: 500;
+    }
+
+    /* ── SECTIONS ── */
+    .section {
+      padding: 6rem 5vw;
+    }
+    .section-alt { background: var(--gray-50); }
+
+    .section-tag {
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--coral);
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+    }
+    .section-tag::before {
+      content: '';
+      width: 20px; height: 2px;
+      background: var(--coral);
+      border-radius: 2px;
+    }
+
+    .section-title {
+      font-family: 'Fraunces', serif;
+      font-size: clamp(2rem, 3.5vw, 3rem);
+      font-weight: 700;
+      letter-spacing: -.03em;
+      line-height: 1.1;
+      max-width: 640px;
+      margin-bottom: 1rem;
+      color: var(--black);
+    }
+    .section-title em { font-style: italic; color: var(--cyan); }
+
+    .section-desc {
+      font-size: .95rem;
+      color: var(--gray-600);
+      max-width: 540px;
+      line-height: 1.75;
+      margin-bottom: 3.5rem;
+    }
+
+    /* ── PROBLEMA / SOLUCIÓN ── */
+    .problem-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+    @media (max-width: 700px) { .problem-grid { grid-template-columns: 1fr; } }
+
+    .prob-card {
+      background: var(--white);
+      border: 1.5px solid var(--gray-200);
+      border-radius: 12px;
+      padding: 2rem;
+      transition: box-shadow .2s;
+    }
+    .prob-card:hover { box-shadow: 0 8px 32px rgba(0,0,0,.07); }
+    .prob-card.problem { border-top: 3px solid var(--coral); }
+    .prob-card.solution { border-top: 3px solid var(--cyan); }
+
+    .prob-head {
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      margin-bottom: 1.3rem;
+    }
+    .prob-card.problem .prob-head { color: var(--coral); }
+    .prob-card.solution .prob-head { color: var(--cyan); }
+
+    .prob-items { list-style: none; display: flex; flex-direction: column; gap: .8rem; }
+    .prob-items li {
+      font-size: .875rem;
+      color: var(--black);
+      display: flex;
+      gap: .7rem;
+      align-items: flex-start;
+      line-height: 1.55;
+    }
+    .ico-x { color: var(--coral); font-weight: 700; flex-shrink: 0; }
+    .ico-check { color: var(--cyan); font-weight: 700; flex-shrink: 0; }
+
+    /* ── COMO FUNCIONA ── */
+    .how-steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2rem;
+      margin-top: 1rem;
+    }
+    @media (max-width: 700px) { .how-steps { grid-template-columns: 1fr; } }
+
+    .how-step {
+      position: relative;
+      padding: 2rem;
+      background: var(--white);
+      border: 1.5px solid var(--gray-200);
+      border-radius: 12px;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .how-step:hover { border-color: var(--cyan); box-shadow: 0 8px 24px rgba(4,175,200,.08); }
+    .how-num {
+      font-family: 'Fraunces', serif;
+      font-size: 3rem;
+      font-weight: 900;
+      color: var(--gray-100);
+      line-height: 1;
+      margin-bottom: .75rem;
+    }
+    .how-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--black);
+      margin-bottom: .4rem;
+      letter-spacing: -.01em;
+    }
+    .how-desc {
+      font-size: .85rem;
+      color: var(--gray-600);
+      line-height: 1.65;
+    }
+
+    /* ── FEATURE BADGES ── */
+    .feature-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .75rem;
+      margin-top: 2.5rem;
+    }
+    .feat-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      background: var(--cyan-light);
+      border: 1px solid var(--cyan-mid);
+      color: var(--cyan);
+      border-radius: 8px;
+      padding: .45rem 1rem;
+      font-size: .82rem;
+      font-weight: 600;
+    }
+    .feat-badge-coral {
+      background: var(--coral-light);
+      border: 1px solid rgba(254,113,112,.2);
+      color: var(--coral);
+    }
+
+    /* ── DEMO SECTION ── */
+    .demo-section {
+      background: linear-gradient(135deg, #0f0f0f 0%, #1a2a3a 100%);
+      color: var(--white);
+      border-radius: 0;
+    }
+    .demo-section .section-tag { color: var(--coral); }
+    .demo-section .section-tag::before { background: var(--coral); }
+    .demo-section .section-title { color: var(--white); }
+    .demo-section .section-desc { color: rgba(255,255,255,.55); }
+
+    .demo-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      align-items: center;
+    }
+    @media (max-width: 800px) { .demo-inner { grid-template-columns: 1fr; } }
+
+    .demo-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .demo-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: .8rem;
+      font-size: .9rem;
+      color: rgba(255,255,255,.75);
+      line-height: 1.6;
+    }
+    .demo-list .arr { color: var(--cyan); font-weight: 700; flex-shrink: 0; }
+    .demo-cta { margin-top: 2.5rem; }
+    .btn-demo {
+      font-size: .9rem;
+      font-weight: 600;
+      color: var(--black);
+      background: var(--white);
+      border: none;
+      padding: .85rem 2rem;
+      border-radius: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background .2s, transform .15s;
+      letter-spacing: -.01em;
+    }
+    .btn-demo:hover { background: var(--gray-100); transform: translateY(-2px); }
+
+    .demo-visual {
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    .demo-screen {
+      background: #111827;
+      border-radius: 8px;
+      padding: 1.2rem;
+      font-family: 'DM Mono', monospace;
+      font-size: .75rem;
+      line-height: 2;
+      min-height: 200px;
+    }
+    .ds-line { display: flex; gap: .5rem; }
+    .ds-prompt { color: var(--cyan); }
+    .ds-cmd { color: #e2e8f0; }
+    .ds-out { color: #68d391; }
+    .ds-cursor {
+      display: inline-block;
+      width: 8px; height: 1em;
+      background: var(--coral);
+      animation: blink .9s step-end infinite;
+      vertical-align: text-bottom;
+    }
+    .demo-label {
+      font-size: .72rem;
+      color: rgba(255,255,255,.3);
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      margin-top: 1rem;
+      text-align: center;
+    }
+
+    /* ── TECH STACK ── */
+    .stack-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+    .stack-card {
+      background: var(--white);
+      border: 1.5px solid var(--gray-200);
+      border-radius: 10px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: .4rem;
+      transition: border-color .2s, box-shadow .2s, transform .15s;
+    }
+    .stack-card:hover {
+      border-color: var(--cyan);
+      box-shadow: 0 8px 24px rgba(4,175,200,.08);
+      transform: translateY(-2px);
+    }
+    .stack-layer {
+      font-size: .65rem;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--coral);
+      font-weight: 600;
+      margin-bottom: .2rem;
+    }
+    .stack-tech {
+      font-family: 'Fraunces', serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--black);
+      letter-spacing: -.02em;
+    }
+    .stack-detail {
+      font-size: .75rem;
+      color: var(--gray-400);
+      line-height: 1.5;
+    }
+
+    /* ── ARQUITECTURA ── */
+    .arch-flow {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      overflow-x: auto;
+      padding-bottom: 1rem;
+    }
+    .arch-node {
+      flex: 1;
+      min-width: 130px;
+      background: var(--white);
+      border: 1.5px solid var(--gray-200);
+      padding: 1.5rem 1rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: .6rem;
+      position: relative;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .arch-node:not(:last-child) { border-right: none; }
+    .arch-node:first-child { border-radius: 10px 0 0 10px; }
+    .arch-node:last-child { border-radius: 0 10px 10px 0; }
+    .arch-node:hover { border-color: var(--cyan); box-shadow: 0 4px 20px rgba(4,175,200,.10); z-index: 1; }
+    .arch-node + .arch-node::before {
+      content: '→';
+      position: absolute;
+      left: -.8rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--cyan);
+      font-size: 1rem;
+      z-index: 2;
+      background: var(--white);
+    }
+    .arch-icon { font-size: 1.5rem; line-height: 1; }
+    .arch-name {
+      font-size: .75rem;
+      font-weight: 700;
+      color: var(--black);
+      letter-spacing: -.01em;
+      text-transform: uppercase;
+    }
+    .arch-desc { font-size: .68rem; color: var(--gray-400); line-height: 1.5; }
+    .arch-port {
+      font-family: 'DM Mono', monospace;
+      font-size: .62rem;
+      color: var(--cyan);
+      background: var(--cyan-light);
+      border: 1px solid var(--cyan-mid);
+      padding: .15rem .5rem;
+      border-radius: 4px;
+    }
+
+    /* ── MULTITENANCY ── */
+    .multi-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+    }
+    @media (max-width: 780px) { .multi-grid { grid-template-columns: 1fr; } }
+
+    .multi-diagram {
+      background: var(--white);
+      border: 1.5px solid var(--gray-200);
+      border-radius: 12px;
+      padding: 1.8rem;
+    }
+    .multi-title {
+      font-family: 'DM Mono', monospace;
+      font-size: .68rem;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--gray-400);
+      margin-bottom: 1.2rem;
+    }
+    .user-row {
+      display: flex;
+      align-items: center;
+      gap: .8rem;
+      padding: .7rem .9rem;
+      border: 1.5px solid var(--gray-200);
+      border-radius: 8px;
+      margin-bottom: .6rem;
+      font-size: .78rem;
+      transition: border-color .2s;
+    }
+    .user-row:hover { border-color: var(--cyan); }
+    .user-avatar {
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .75rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .a1 { background: var(--cyan-light); color: var(--cyan); }
+    .a2 { background: var(--coral-light); color: var(--coral); }
+    .a3 { background: var(--gray-100); color: var(--gray-400); }
+    .user-info { flex: 1; }
+    .user-name { font-weight: 600; color: var(--black); font-size: .8rem; }
+    .user-ports { color: var(--gray-400); font-size: .68rem; font-family: 'DM Mono', monospace; }
+    .user-tag {
+      font-size: .62rem;
+      letter-spacing: .08em;
+      padding: .15rem .5rem;
+      border-radius: 4px;
+      border: 1px solid var(--gray-200);
+      color: var(--gray-400);
+    }
+    .user-tag.active { border-color: var(--cyan); color: var(--cyan); background: var(--cyan-light); }
+
+    .isolation-list { display: flex; flex-direction: column; gap: 1rem; }
+    .iso-item { display: flex; gap: 1rem; align-items: flex-start; }
+    .iso-num {
+      font-family: 'Fraunces', serif;
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--cyan);
+      min-width: 2rem;
+      line-height: 1;
+    }
+    .iso-head { font-weight: 700; color: var(--black); font-size: .9rem; margin-bottom: .2rem; }
+    .iso-desc { font-size: .8rem; color: var(--gray-600); line-height: 1.6; }
+    .iso-code {
+      font-family: 'DM Mono', monospace;
+      font-size: .68rem;
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      color: var(--cyan);
+      padding: .2rem .6rem;
+      border-radius: 4px;
+      margin-top: .3rem;
+      display: inline-block;
+    }
+
+    /* ── COSTOS ── */
+    .cost-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+    }
+    @media (max-width: 700px) { .cost-grid { grid-template-columns: 1fr; } }
+
+    .cost-card {
+      background: var(--white);
+      border: 1.5px solid var(--gray-200);
+      border-radius: 12px;
+      padding: 2rem;
+    }
+    .cost-card.featured {
+      border-color: var(--cyan);
+      box-shadow: 0 4px 24px rgba(4,175,200,.12);
+      position: relative;
+    }
+    .cost-badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--cyan);
+      color: var(--white);
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      padding: .2rem .7rem;
+      border-radius: 100px;
+      white-space: nowrap;
+    }
+    .cost-name { font-size: .75rem; color: var(--gray-400); text-transform: uppercase; letter-spacing: .08em; margin-bottom: .5rem; }
+    .cost-price {
+      font-family: 'Fraunces', serif;
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: var(--black);
+      letter-spacing: -.03em;
+      line-height: 1;
+      margin-bottom: .3rem;
+    }
+    .cost-price.featured-price { color: var(--cyan); }
+    .cost-savings {
+      font-size: .78rem;
+      color: var(--coral);
+      font-weight: 600;
+      margin-bottom: 1rem;
+    }
+    .cost-desc { font-size: .82rem; color: var(--gray-600); line-height: 1.6; }
+
+    /* ── AUTOMATIZACION / IaC ── */
+    .iac-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 3rem;
+    }
+    @media (max-width: 780px) { .iac-grid { grid-template-columns: 1fr; } }
+
+    .iac-card {
+      background: var(--white);
+      border: 1.5px solid var(--gray-200);
+      border-radius: 12px;
+      padding: 2rem;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .iac-card:hover { border-color: var(--cyan); box-shadow: 0 8px 24px rgba(4,175,200,.08); }
+    .iac-card.layer-infra  { border-top: 3px solid var(--cyan); }
+    .iac-card.layer-config { border-top: 3px solid var(--coral); }
+
+    .iac-layer {
+      font-size: .65rem;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: .3rem;
+    }
+    .iac-card.layer-infra .iac-layer  { color: var(--cyan); }
+    .iac-card.layer-config .iac-layer { color: var(--coral); }
+
+    .iac-tool {
+      font-family: 'Fraunces', serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--black);
+      letter-spacing: -.02em;
+      margin-bottom: .5rem;
+    }
+    .iac-intro {
+      font-size: .85rem;
+      color: var(--gray-600);
+      line-height: 1.65;
+      margin-bottom: 1.3rem;
+    }
+    .iac-items { list-style: none; display: flex; flex-direction: column; gap: .7rem; }
+    .iac-items li {
+      display: flex;
+      gap: .7rem;
+      align-items: flex-start;
+      font-size: .85rem;
+      color: var(--black);
+      line-height: 1.55;
+    }
+    .iac-card.layer-infra .ico-dash  { color: var(--cyan); font-weight: 700; flex-shrink: 0; }
+    .iac-card.layer-config .ico-dash { color: var(--coral); font-weight: 700; flex-shrink: 0; }
+
+    .deploy-proof {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+      align-items: center;
+      background: var(--white);
+      border: 1.5px solid var(--gray-200);
+      border-radius: 12px;
+      padding: 2.2rem;
+    }
+    @media (max-width: 800px) { .deploy-proof { grid-template-columns: 1fr; gap: 2rem; } }
+
+    .deploy-screen {
+      background: #111827;
+      border-radius: 8px;
+      padding: 1.2rem;
+      font-family: 'DM Mono', monospace;
+      font-size: .75rem;
+      line-height: 2;
+      overflow-x: auto;
+    }
+    .deploy-screen .ds-prompt { color: var(--coral); }
+    .deploy-screen .ds-cmd    { color: #e2e8f0; }
+    .deploy-screen .ds-out    { color: #68d391; }
+    .deploy-screen .ds-note   { color: #4a5568; }
+
+    .deploy-facts { list-style: none; display: flex; flex-direction: column; gap: 1.2rem; }
+    .deploy-fact { display: flex; gap: 1rem; align-items: flex-start; }
+    .deploy-fact-val {
+      font-family: 'Fraunces', serif;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--cyan);
+      line-height: 1.15;
+      min-width: 4.8rem;
+      letter-spacing: -.03em;
+    }
+    .deploy-fact-head { font-weight: 700; font-size: .9rem; color: var(--black); margin-bottom: .2rem; }
+    .deploy-fact-desc { font-size: .82rem; color: var(--gray-600); line-height: 1.6; }
+
+    /* ── SCALABILITY ── */
+    .scale-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+    }
+    @media (max-width: 600px) { .scale-grid { grid-template-columns: 1fr; } }
+    .scale-card {
+      background: var(--white);
+      border: 1.5px solid var(--gray-200);
+      border-radius: 10px;
+      padding: 1.5rem;
+      transition: border-color .2s;
+    }
+    .scale-card:hover { border-color: var(--cyan); }
+    .scale-icon { font-size: 1.4rem; margin-bottom: .5rem; }
+    .scale-title { font-weight: 700; color: var(--black); margin-bottom: .3rem; font-size: .9rem; }
+    .scale-desc { font-size: .8rem; color: var(--gray-600); line-height: 1.6; }
+
+    /* ── SEGURIDAD ── */
+    .sec-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+    }
+    .sec-item {
+      display: flex;
+      align-items: flex-start;
+      gap: .8rem;
+      background: var(--white);
+      border: 1.5px solid var(--gray-200);
+      border-radius: 10px;
+      padding: 1.2rem;
+    }
+    .sec-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--cyan);
+      flex-shrink: 0;
+      margin-top: .3rem;
+    }
+    .sec-text { font-size: .85rem; color: var(--black); font-weight: 500; line-height: 1.5; }
+
+    /* ── IMPACTO ── */
+    .impact-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+    }
+    @media (max-width: 700px) { .impact-grid { grid-template-columns: 1fr; } }
+    .impact-card {
+      border-left: 3px solid var(--coral);
+      padding: 1.2rem 1.5rem;
+      background: var(--white);
+      border-radius: 0 10px 10px 0;
+    }
+    .impact-title { font-weight: 700; font-size: .95rem; margin-bottom: .3rem; color: var(--black); }
+    .impact-desc { font-size: .82rem; color: var(--gray-600); line-height: 1.6; }
+
+    /* ── TIMELINE ── */
+    .timeline { position: relative; padding-left: 2rem; }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 2px;
+      background: linear-gradient(to bottom, var(--cyan), var(--coral), transparent);
+      border-radius: 2px;
+    }
+    .tl-item { position: relative; padding: 0 0 2.5rem 2rem; }
+    .tl-item::before {
+      content: '';
+      position: absolute;
+      left: -5px; top: 4px;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      border: 2px solid var(--cyan);
+      background: var(--white);
+    }
+    .tl-item.done::before { background: var(--cyan); border-color: var(--cyan); }
+    .tl-item.active::before { background: var(--coral); border-color: var(--coral); box-shadow: 0 0 10px rgba(254,113,112,.4); animation: pulse 1.5s infinite; }
+    .tl-item.pending::before { background: var(--white); border-color: var(--gray-200); }
+    .tl-date {
+      font-size: .7rem;
+      color: var(--gray-400);
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin-bottom: .3rem;
+      font-family: 'DM Mono', monospace;
+    }
+    .tl-title { font-weight: 700; font-size: 1rem; color: var(--black); margin-bottom: .3rem; }
+    .tl-desc { font-size: .82rem; color: var(--gray-600); line-height: 1.7; }
+    .tl-badge {
+      display: inline-block;
+      font-size: .62rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      padding: .2rem .65rem;
+      border-radius: 100px;
+      margin-top: .4rem;
+      font-weight: 600;
+    }
+    .tl-badge.done { color: var(--cyan); border: 1px solid var(--cyan-mid); background: var(--cyan-light); }
+    .tl-badge.active { color: var(--coral); border: 1px solid rgba(254,113,112,.25); background: var(--coral-light); }
+    .tl-badge.pending { color: var(--gray-400); border: 1px solid var(--gray-200); }
+
+    /* ── LAB ACCESS SECTION ── */
+    .lab-section {
+      background: linear-gradient(135deg, var(--cyan) 0%, #028aa0 100%);
+      color: var(--white);
+      text-align: center;
+      padding: 6rem 5vw;
+    }
+    .lab-section .section-tag { color: rgba(255,255,255,.7); justify-content: center; }
+    .lab-section .section-tag::before { background: rgba(255,255,255,.7); }
+    .lab-section .section-title { color: var(--white); margin: 0 auto 1rem; text-align: center; }
+    .lab-section .section-desc { color: rgba(255,255,255,.75); margin: 0 auto 2.5rem; text-align: center; }
+    .btn-lab {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--cyan);
+      background: var(--white);
+      border: none;
+      padding: 1rem 2.5rem;
+      border-radius: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform .15s, box-shadow .2s;
+      display: inline-flex;
+      align-items: center;
+      gap: .6rem;
+      letter-spacing: -.01em;
+      box-shadow: 0 4px 20px rgba(0,0,0,.15);
+    }
+    .btn-lab:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,.2); }
+    .lab-note {
+      font-family: 'DM Mono', monospace;
+      font-size: .72rem;
+      color: rgba(255,255,255,.5);
+      margin-top: 1.2rem;
+    }
+
+    /* ── CTA FINAL ── */
+    .cta-section { text-align: center; background: var(--gray-50); }
+    .cta-section .section-title { margin: 0 auto 1rem; }
+    .cta-section .section-desc { margin: 0 auto 2.5rem; }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid var(--gray-200);
+      padding: 2rem 5vw;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      background: var(--white);
+    }
+    .footer-logo {
+      font-family: 'Fraunces', serif;
+      font-size: .95rem;
+      font-weight: 700;
+      color: var(--cyan);
+      letter-spacing: -.02em;
+    }
+    .footer-note { font-size: .75rem; color: var(--gray-400); }
+    .footer-deadline { font-size: .75rem; color: var(--coral); font-weight: 500; }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeLeft {
+      from { opacity: 0; transform: translateX(30px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: .6; transform: scale(1.2); }
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      nav .nav-links, .nav-login { display: none; }
+      .nav-hamburger { display: flex; }
+      .hero { grid-template-columns: 1fr; min-height: auto; padding-top: 4rem; }
+      .stats-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 0; }
+      .stat-item { padding: 1.4rem 1.2rem; border-right: 1px solid var(--gray-200); border-bottom: 1px solid var(--gray-200); }
+      .stat-item:nth-child(2n) { border-right: none; }
+      .stat-item:first-child { padding-left: 1.2rem; }
+      .section { padding: 4rem 5vw; }
+      .arch-flow { flex-direction: column; }
+      .arch-node { flex-direction: row; text-align: left; min-width: unset; padding: 1rem; gap: 1rem; border-radius: 8px !important; border: 1.5px solid var(--gray-200) !important; margin-bottom: .6rem; }
+      .arch-node + .arch-node::before { content: '↓'; left: 50%; top: -.7rem; transform: translateX(-50%); }
+      .cost-grid { grid-template-columns: 1fr; }
+      .impact-grid { grid-template-columns: 1fr; }
+      footer { flex-direction: column; align-items: flex-start; }
+      .nav-outer { padding: .75rem 1rem; }
+    }
+    @media (max-width: 480px) {
+      .hero h1 { font-size: clamp(2.2rem, 11vw, 3rem); }
+      .how-steps { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- MESH BACKGROUND -->
+<div class="mesh-bg">
+  <canvas id="meshCanvas"></canvas>
+  <div class="mesh-gradient"></div>
+</div>
+
+<!-- NAV -->
+<div class="nav-outer">
+<nav>
+  <a class="logo-wrap" href="#">
+    
+    <span class="logo-text">Aula<span>Remota</span></span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#problema">Problema</a></li>
+    <li><a href="#como-funciona">Como funciona</a></li>
+    <li><a href="#arquitectura">Arquitectura</a></li>
+    <li><a href="#stack">Stack</a></li>
+    <li><a href="#despliegue">Despliegue</a></li>
+    <li><a href="#estado">Timeline</a></li>
+  </ul>
+  <div class="nav-right">
+    <a class="nav-login" href="#lab">Ver demo</a>
+    <a class="nav-cta" href="https://lab.aularemota.net/guacamole" target="_blank" rel="noopener noreferrer">Probar lab</a>
+    <button class="nav-hamburger" id="hamburger" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+</div>
+
+<!-- MOBILE DRAWER -->
+<div class="mobile-drawer" id="drawer">
+  <a href="#problema"      onclick="closeDrawer()">Problema</a>
+  <a href="#como-funciona" onclick="closeDrawer()">Como funciona</a>
+  <a href="#arquitectura"  onclick="closeDrawer()">Arquitectura</a>
+  <a href="#stack"         onclick="closeDrawer()">Stack</a>
+  <a href="#despliegue"    onclick="closeDrawer()">Despliegue</a>
+  <a href="#lab"           onclick="closeDrawer()">Lab</a>
+  <a href="#lab" class="drawer-cta" onclick="closeDrawer()">Probar demo</a>
+</div>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      Proyecto Escolar · MVP · DaaS Educativo
+    </div>
+
+    <h1>
+      Accede a<br />
+      laboratorios<br />
+      de redes<br />
+      <em>desde tu navegador</em>
+    </h1>
+
+    <p class="hero-sub">
+      Ejecuta herramientas como GNS3 directamente desde tu navegador, sin necesidad de hardware potente.
+    </p>
+
+    <div class="hero-pills">
+      <span class="pill"><span class="pill-check">+</span> Sin instalaciones</span>
+      <span class="pill"><span class="pill-check">+</span> Sin equipos costosos</span>
+      <span class="pill"><span class="pill-check">+</span> Acceso inmediato</span>
+    </div>
+
+    <div class="hero-actions">
+      <a href="#lab" class="btn-primary">Probar demo</a>
+      <a href="#como-funciona" class="btn-outline">Ver como funciona</a>
+    </div>
+  </div>
+
+  <div class="hero-visual">
+    <img src="aulaRemota.png" alt="Logo Aula Remota" class="hero-logo-visual" />
+    <div class="browser-mock">
+      <div class="browser-bar">
+        <span class="b-dot"></span>
+        <span class="b-dot"></span>
+        <span class="b-dot"></span>
+        <div class="b-url">
+          <span class="b-lock">&#128274;</span>
+          lab.aularemota.net/guacamole
+        </div>
+      </div>
+      <div class="b-body">
+        <div class="t-line"><span class="t-prompt">$</span><span class="t-cmd">ssh <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="32535e475f5c5d03725e53501c53475e5340575f5d46531c5c5746">[email&#160;protected]</a></span></div>
+        <div class="t-line t-out">Connecting to GNS3 environment...</div>
+        <div class="t-line t-out">Session started for: alumno1</div>
+        <div class="t-line t-out">VNC server: :1 (port 5901)</div>
+        <div class="t-line t-comment"># GNS3 running on remote XFCE4</div>
+        <div class="t-line"><span class="t-prompt">$</span><span class="t-cmd">gns3 --version</span></div>
+        <div class="t-line t-out">GNS3 v2.2.43 running</div>
+        <div class="t-line"><span class="t-prompt">$</span><span class="t-cursor"></span></div>
+        <div class="guac-ui">
+          <span class="guac-dot"></span>
+          <span class="guac-label">Apache Guacamole · Sesion activa</span>
+          <span class="guac-status">CONNECTED</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS BAR -->
+<div class="stats-bar">
+  <div class="stat-item">
+    <div class="stat-val">~47%</div>
+    <div class="stat-label">Mas barato que Citrix</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-val">~79%</div>
+    <div class="stat-label">Mas barato que Win 365</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-val">0</div>
+    <div class="stat-label">Instalaciones requeridas</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-val">N</div>
+    <div class="stat-label">Usuarios simultaneos</div>
+  </div>
+</div>
+
+<!-- PROBLEMA -->
+<section class="section" id="problema">
+  <div class="section-tag">El Problema</div>
+  <h2 class="section-title">Muchos estudiantes de TI<br />enfrentan una <em>barrera real</em></h2>
+  <p class="section-desc">Equipos obsoletos, laboratorios costosos y acceso desigual a herramientas practicas limitan directamente el aprendizaje.</p>
+
+  <div class="problem-grid">
+    <div class="prob-card problem">
+      <div class="prob-head">La barrera</div>
+      <ul class="prob-items">
+        <li><span class="ico-x">✕</span> Equipos de computo obsoletos que no soportan software moderno</li>
+        <li><span class="ico-x">✕</span> Alto costo para actualizar hardware o laboratorios</li>
+        <li><span class="ico-x">✕</span> Desigualdad en el acceso a herramientas practicas</li>
+        <li><span class="ico-x">✕</span> Instalaciones complejas que fallan en Windows</li>
+        <li><span class="ico-x">✕</span> Sin aislamiento entre sesiones de alumnos</li>
+      </ul>
+    </div>
+    <div class="prob-card solution">
+      <div class="prob-head">La solucion AulaRemota</div>
+      <ul class="prob-items">
+        <li><span class="ico-check">✓</span> Todo el procesamiento ocurre en la nube (AWS EC2)</li>
+        <li><span class="ico-check">✓</span> Acceso exclusivo por HTTPS puerto 443</li>
+        <li><span class="ico-check">✓</span> Solo se necesita Chrome o Edge en el dispositivo</li>
+        <li><span class="ico-check">✓</span> GNS3 preinstalado en el servidor remoto</li>
+        <li><span class="ico-check">✓</span> Multi-tenancy: cada alumno tiene su propio VNC</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- LA SOLUCION / COMO FUNCIONA -->
+<section class="section section-alt" id="como-funciona">
+  <div class="section-tag">La Solucion</div>
+  <h2 class="section-title">Aula Remota centraliza todo<br />el procesamiento <em>en la nube</em></h2>
+  <p class="section-desc">Tu solo necesitas un navegador. El resto ocurre en nuestros servidores.</p>
+
+  <div class="how-steps">
+    <div class="how-step">
+      <div class="how-num">01</div>
+      <div class="how-title">Inicias sesion</div>
+      <div class="how-desc">Accedes desde cualquier dispositivo con un navegador web. Sin instalar nada, sin configurar nada.</div>
+    </div>
+    <div class="how-step">
+      <div class="how-num">02</div>
+      <div class="how-title">Accedes a tu entorno</div>
+      <div class="how-desc">Tu escritorio virtual XFCE4 esta listo en segundos, completamente aislado de otros usuarios.</div>
+    </div>
+    <div class="how-step">
+      <div class="how-num">03</div>
+      <div class="how-title">Trabajas en tiempo real</div>
+      <div class="how-desc">Utilizas GNS3 y otras herramientas como si estuvieran corriendo localmente. Todo por el navegador.</div>
+    </div>
+  </div>
+
+  <div class="feature-badges">
+    <span class="feat-badge">&#10003; Cero instalaciones</span>
+    <span class="feat-badge">&#10003; Sesiones aisladas por usuario</span>
+    <span class="feat-badge">&#10003; Acceso desde cualquier lugar</span>
+    <span class="feat-badge feat-badge-coral">&#10003; HTTPS seguro</span>
+    <span class="feat-badge feat-badge-coral">&#10003; Arquitectura escalable</span>
+  </div>
+</section>
+
+<!-- DEMO -->
+<section class="section demo-section" id="lab">
+  <div class="demo-inner">
+    <div>
+      <div class="section-tag">Demo</div>
+      <h2 class="section-title">Mira como funciona<br />en tiempo real</h2>
+      <p class="section-desc">Accede a un escritorio remoto completo desde tu navegador. Sin instalar nada, sin hardware especial.</p>
+      <ul class="demo-list">
+        <li><span class="arr">&#8594;</span> Accede a un escritorio remoto desde tu navegador</li>
+        <li><span class="arr">&#8594;</span> Interactua con un entorno completo de redes</li>
+        <li><span class="arr">&#8594;</span> Ejecuta GNS3 como si fuera local</li>
+      </ul>
+      <div class="demo-cta">
+        <a href="https://lab.aularemota.net/guacamole" target="_blank" rel="noopener noreferrer" class="btn-demo">
+          Acceder a demo
+        </a>
+      </div>
+    </div>
+    <div class="demo-visual">
+      <div class="demo-screen">
+        <div class="ds-line"><span class="ds-prompt">alumno1@ec2$</span> <span class="ds-cmd">gns3 &</span></div>
+        <div class="ds-line ds-out">Starting GNS3 GUI...</div>
+        <div class="ds-line ds-out">Loaded topology: lab-ccna-01.gns3</div>
+        <div class="ds-line ds-out">Nodes online: 4/4</div>
+        <div class="ds-line"><span class="ds-prompt">alumno1@ec2$</span> <span class="ds-cmd">ping 10.0.0.1</span></div>
+        <div class="ds-line ds-out">64 bytes from 10.0.0.1: time=2ms</div>
+        <div class="ds-line ds-out">64 bytes from 10.0.0.1: time=1ms</div>
+        <div class="ds-line"><span class="ds-prompt">alumno1@ec2$</span> <span class="ds-cursor"></span></div>
+      </div>
+      <div class="demo-label">Sesion activa · Apache Guacamole · TigerVNC</div>
+    </div>
+  </div>
+</section>
+
+<!-- ARQUITECTURA -->
+<section class="section" id="arquitectura">
+  <div class="section-tag">Arquitectura</div>
+  <h2 class="section-title">Arquitectura en <em>5 capas</em></h2>
+  <p class="section-desc">Cada peticion viaja desde el navegador del alumno hasta su escritorio XFCE4 pasando por Nginx, Guacamole y VNC. Todo dentro de AWS.</p>
+
+  <div class="arch-flow">
+    <div class="arch-node">
+      <div class="arch-icon">&#128187;</div>
+      <div class="arch-name">Alumno</div>
+      <div class="arch-desc">Chrome / Edge en cualquier PC</div>
+      <div class="arch-port">HTTPS</div>
+    </div>
+    <div class="arch-node">
+      <div class="arch-icon">&#128274;</div>
+      <div class="arch-name">Nginx PM</div>
+      <div class="arch-desc">Proxy + SSL Let's Encrypt</div>
+      <div class="arch-port">:443 &rarr; :8080</div>
+    </div>
+    <div class="arch-node">
+      <div class="arch-icon">&#127760;</div>
+      <div class="arch-name">Guacamole</div>
+      <div class="arch-desc">Apache Guacamole + MariaDB</div>
+      <div class="arch-port">:8080</div>
+    </div>
+    <div class="arch-node">
+      <div class="arch-icon">&#128225;</div>
+      <div class="arch-name">guacd</div>
+      <div class="arch-desc">Traduce web a VNC</div>
+      <div class="arch-port">localhost:590X</div>
+    </div>
+    <div class="arch-node">
+      <div class="arch-icon">&#128433;</div>
+      <div class="arch-name">TigerVNC</div>
+      <div class="arch-desc">XFCE4 + GNS3 por usuario</div>
+      <div class="arch-port">:1 / :2 / :N</div>
+    </div>
+  </div>
+</section>
+
+<!-- MULTITENANCY -->
+<section class="section section-alt">
+  <div class="section-tag">Multitenancy</div>
+  <h2 class="section-title">Un servidor.<br /><em>N alumnos aislados.</em></h2>
+  <p class="section-desc">Cada alumno tiene su propio usuario Linux, instancia VNC y rango de puertos para GNS3. Sin interferencias.</p>
+
+  <div class="multi-grid">
+    <div class="multi-diagram">
+      <div class="multi-title">// Sesiones activas en EC2</div>
+      <div class="user-row">
+        <div class="user-avatar a1">A1</div>
+        <div class="user-info">
+          <div class="user-name">alumno1 · VNC :1</div>
+          <div class="user-ports">GNS3 :3081 · Consolas: 5001-5999</div>
+        </div>
+        <div class="user-tag active">ACTIVO</div>
+      </div>
+      <div class="user-row">
+        <div class="user-avatar a2">A2</div>
+        <div class="user-info">
+          <div class="user-name">alumno2 · VNC :2</div>
+          <div class="user-ports">GNS3 :3082 · Consolas: 6001-6999</div>
+        </div>
+        <div class="user-tag active">ACTIVO</div>
+      </div>
+      <div class="user-row" style="opacity:.5">
+        <div class="user-avatar a3">AN</div>
+        <div class="user-info">
+          <div class="user-name">alumnoN · VNC :N</div>
+          <div class="user-ports">GNS3 :308N · Escalable...</div>
+        </div>
+        <div class="user-tag">&mdash;</div>
+      </div>
+    </div>
+
+    <div class="isolation-list">
+      <div class="iso-item">
+        <div class="iso-num">01</div>
+        <div class="iso-content">
+          <div class="iso-head">Aislamiento de SO</div>
+          <div class="iso-desc">Cada alumno tiene su propio usuario Linux completamente separado.</div>
+          <div class="iso-code">useradd alumno1 && useradd alumno2</div>
+        </div>
+      </div>
+      <div class="iso-item">
+        <div class="iso-num">02</div>
+        <div class="iso-content">
+          <div class="iso-head">Aislamiento Grafico</div>
+          <div class="iso-desc">Cada usuario ejecuta su propia instancia VNC en puertos distintos.</div>
+          <div class="iso-code">vncserver :1 (&rarr; 5901) · :2 (&rarr; 5902)</div>
+        </div>
+      </div>
+      <div class="iso-item">
+        <div class="iso-num">03</div>
+        <div class="iso-content">
+          <div class="iso-head">Aislamiento de GNS3</div>
+          <div class="iso-desc">Archivo gns3_server.conf por usuario con rango de puertos unicos.</div>
+          <div class="iso-code">~alumnoN/gns3_server.conf &rarr; port 308N</div>
+        </div>
+      </div>
+      <div class="iso-item">
+        <div class="iso-num">04</div>
+        <div class="iso-content">
+          <div class="iso-head">Aislamiento de Acceso</div>
+          <div class="iso-desc">En MariaDB, cada cuenta web solo puede ver su propia conexion VNC.</div>
+          <div class="iso-code">GRANT connection_id=X TO alumnoN</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STACK -->
+<section class="section" id="stack">
+  <div class="section-tag">Tecnologia</div>
+  <h2 class="section-title">Disenado con tecnologias<br />reales de la industria</h2>
+  <p class="section-desc">Cada componente fue elegido por su eficiencia en entornos con recursos limitados y compatibilidad con AWS Educate.</p>
+
+  <div class="stack-grid">
+    <div class="stack-card">
+      <div class="stack-layer">Cloud</div>
+      <div class="stack-tech">AWS EC2</div>
+      <div class="stack-detail">m7i-flex.large · 2 vCPU · 8 GB RAM · Ubuntu 22.04</div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-layer">Entorno Grafico</div>
+      <div class="stack-tech">XFCE4</div>
+      <div class="stack-detail">Escritorio ligero de ~250 MB RAM, sesiones aisladas</div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-layer">Pantalla Remota</div>
+      <div class="stack-tech">TigerVNC</div>
+      <div class="stack-detail">Un proceso VNC por alumno, puertos independientes</div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-layer">Gateway HTML5</div>
+      <div class="stack-tech">Guacamole</div>
+      <div class="stack-detail">Apache Guacamole via Docker Compose, auth MariaDB</div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-layer">Base de Datos</div>
+      <div class="stack-tech">MariaDB</div>
+      <div class="stack-detail">Schema oficial, gestion de usuarios y conexiones</div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-layer">App Objetivo</div>
+      <div class="stack-tech">GNS3</div>
+      <div class="stack-detail">Simulador de redes para CCNA, por usuario con puertos unicos</div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-layer">Proxy & SSL</div>
+      <div class="stack-tech">Nginx PM</div>
+      <div class="stack-detail">Certificados SSL via Let's Encrypt, Port 443</div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-layer">Contenedores</div>
+      <div class="stack-tech">Docker</div>
+      <div class="stack-detail">Docker Compose para Guacamole, guacd y MariaDB</div>
+    </div>
+  </div>
+
+  <p style="margin-top:2rem; font-size:.85rem; color:var(--gray-600);">
+    Arquitectura modular, desplegada como MVP en una sola instancia, pero lista para escalar.
+  </p>
+</section>
+
+<!-- AUTOMATIZACION / DESPLIEGUE -->
+<section class="section section-alt" id="despliegue">
+  <div class="section-tag">Despliegue</div>
+  <h2 class="section-title">El aula entera se levanta<br /><em>con dos comandos</em></h2>
+  <p class="section-desc">AulaRemota paso de montarse a mano a estar automatizada de punta a punta. La infraestructura y la configuracion del servidor viven en el repositorio como codigo, en dos capas.</p>
+
+  <div class="iac-grid">
+    <div class="iac-card layer-infra">
+      <div class="iac-layer">Capa 1 · Infraestructura</div>
+      <div class="iac-tool">Terraform</div>
+      <p class="iac-intro">Toda la infraestructura de AWS esta definida en codigo: se crea entera con un comando y se destruye igual.</p>
+      <ul class="iac-items">
+        <li><span class="ico-dash">&#8212;</span> Red privada y reglas de cortafuegos</li>
+        <li><span class="ico-dash">&#8212;</span> IP fija y registro DNS del laboratorio</li>
+        <li><span class="ico-dash">&#8212;</span> La instancia del servidor</li>
+        <li><span class="ico-dash">&#8212;</span> Estado centralizado: no depende del ordenador de nadie</li>
+      </ul>
+    </div>
+    <div class="iac-card layer-config">
+      <div class="iac-layer">Capa 2 · Configuracion</div>
+      <div class="iac-tool">Ansible</div>
+      <p class="iac-intro">Las ~290 lineas de comandos manuales que antes hacian falta ahora estan automatizadas por completo.</p>
+      <ul class="iac-items">
+        <li><span class="ico-dash">&#8212;</span> Los escritorios remotos de cada alumno</li>
+        <li><span class="ico-dash">&#8212;</span> El portal web con su autenticacion</li>
+        <li><span class="ico-dash">&#8212;</span> GNS3 configurado por usuario, sin colisiones entre alumnos</li>
+        <li><span class="ico-dash">&#8212;</span> La carpeta compartida entre profesor y alumnos</li>
+        <li><span class="ico-dash">&#8212;</span> El certificado HTTPS</li>
+        <li><span class="ico-dash">&#8212;</span> Contrasenas cifradas dentro del repositorio</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="deploy-proof">
+    <div class="deploy-screen">
+      <div class="ds-line"><span class="ds-prompt">$</span> <span class="ds-cmd">terraform apply</span></div>
+      <div class="ds-line ds-out">Red, cortafuegos, IP fija, DNS e instancia listos</div>
+      <div class="ds-line"><span class="ds-prompt">$</span> <span class="ds-cmd">ansible-playbook site.yml</span></div>
+      <div class="ds-line ds-out">Escritorios, portal, GNS3, carpeta compartida y HTTPS</div>
+      <div class="ds-line ds-note"># aula completa reconstruida desde cero</div>
+      <div class="ds-line"><span class="ds-prompt">$</span> <span class="ds-cursor"></span></div>
+    </div>
+
+    <ul class="deploy-facts">
+      <li class="deploy-fact">
+        <div class="deploy-fact-val">7 min</div>
+        <div>
+          <div class="deploy-fact-head">Reconstruccion completa</div>
+          <div class="deploy-fact-desc">Levantar el aula entera desde cero son dos comandos y unos siete minutos.</div>
+        </div>
+      </li>
+      <li class="deploy-fact">
+        <div class="deploy-fact-val">100%</div>
+        <div>
+          <div class="deploy-fact-head">Verificado de verdad</div>
+          <div class="deploy-fact-desc">Se destruyo la infraestructura entera y se volvio a levantar: todo regreso solo, incluidos el certificado HTTPS y las cuentas de los alumnos.</div>
+        </div>
+      </li>
+      <li class="deploy-fact">
+        <div class="deploy-fact-val">N&#215;</div>
+        <div>
+          <div class="deploy-fact-head">Repetible</div>
+          <div class="deploy-fact-desc">Se puede relanzar las veces que haga falta sin romper nada.</div>
+        </div>
+      </li>
+      <li class="deploy-fact">
+        <div class="deploy-fact-val">0</div>
+        <div>
+          <div class="deploy-fact-head">Pasos manuales para ahorrar</div>
+          <div class="deploy-fact-desc">El centro puede apagar el servidor fuera del horario de clase y recrearlo despues sin ningun proceso manual.</div>
+        </div>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<!-- ESCALABILIDAD -->
+<section class="section">
+  <div class="section-tag">Escalabilidad</div>
+  <h2 class="section-title">El sistema crece<br /><em>segun la demanda</em></h2>
+  <p class="section-desc">Desde pocos usuarios hasta entornos completos de laboratorio. La arquitectura lo soporta.</p>
+
+  <div class="scale-grid">
+    <div class="scale-card">
+      <div class="scale-icon">&#8679;</div>
+      <div class="scale-title">Escalado vertical</div>
+      <div class="scale-desc">Aumenta CPU, RAM y almacenamiento en la misma instancia segun la demanda.</div>
+    </div>
+    <div class="scale-card">
+      <div class="scale-icon">&#8680;</div>
+      <div class="scale-title">Escalado horizontal</div>
+      <div class="scale-desc">Despliega multiples instancias EC2 para distribuir la carga entre ellas.</div>
+    </div>
+    <div class="scale-card">
+      <div class="scale-icon">&#9878;</div>
+      <div class="scale-title">Balanceo de carga</div>
+      <div class="scale-desc">Distribuye las conexiones automaticamente entre los servidores disponibles.</div>
+    </div>
+    <div class="scale-card">
+      <div class="scale-icon">&#9881;</div>
+      <div class="scale-title">Orquestacion de contenedores</div>
+      <div class="scale-desc">Preparado para Kubernetes en el futuro, para gestion avanzada de recursos.</div>
+    </div>
+  </div>
+</section>
+
+<!-- COSTOS -->
+<section class="section section-alt">
+  <div class="section-tag">Costos</div>
+  <h2 class="section-title">Aula Remota reduce<br /><em>significativamente</em> los costos</h2>
+  <p class="section-desc">Sin necesidad de comprar hardware costoso ni licencias empresariales.</p>
+
+  <div class="cost-grid">
+    <div class="cost-card">
+      <div class="cost-name">Windows 365</div>
+      <div class="cost-price">Alto</div>
+      <div class="cost-desc">Solucion Microsoft para escritorios en la nube. Licenciamiento por usuario elevado.</div>
+    </div>
+    <div class="cost-card">
+      <div class="cost-name">Citrix DaaS</div>
+      <div class="cost-price">Alto</div>
+      <div class="cost-desc">Plataforma empresarial con costos de infraestructura y licenciamiento significativos.</div>
+    </div>
+    <div class="cost-card featured">
+      <div class="cost-badge">AulaRemota</div>
+      <div class="cost-name" style="margin-top:.5rem;">Ahorro real</div>
+      <div class="cost-price featured-price">~79%</div>
+      <div class="cost-savings">vs Windows 365</div>
+      <div class="cost-savings" style="margin-top:-.5rem;">~47.5% vs Citrix</div>
+      <div class="cost-desc">Solo pagas el tiempo de computo en AWS con creditos educativos.</div>
+    </div>
+  </div>
+</section>
+
+<!-- SEGURIDAD -->
+<section class="section">
+  <div class="section-tag">Seguridad</div>
+  <h2 class="section-title">Disenado con<br /><em>buenas practicas</em></h2>
+  <p class="section-desc">Cada sesion esta completamente separada. Principio de menor privilegio aplicado en todo el stack.</p>
+
+  <div class="sec-list">
+    <div class="sec-item"><span class="sec-dot"></span><span class="sec-text">Cifrado HTTPS con TLS en todo el trafico</span></div>
+    <div class="sec-item"><span class="sec-dot"></span><span class="sec-text">Firewall mediante Security Groups de AWS</span></div>
+    <div class="sec-item"><span class="sec-dot"></span><span class="sec-text">Aislamiento completo por usuario a nivel SO</span></div>
+    <div class="sec-item"><span class="sec-dot"></span><span class="sec-text">Principio de menor privilegio en cada capa</span></div>
+    <div class="sec-item"><span class="sec-dot"></span><span class="sec-text">Cada sesion VNC independiente e inaccesible</span></div>
+    <div class="sec-item"><span class="sec-dot"></span><span class="sec-text">Credenciales por usuario en MariaDB</span></div>
+  </div>
+</section>
+
+<!-- IMPACTO -->
+<section class="section section-alt">
+  <div class="section-tag">Impacto</div>
+  <h2 class="section-title">Mas alla de lo tecnico</h2>
+  <p class="section-desc">Este proyecto no solo resuelve un problema tecnico — democratiza el acceso a la educacion tecnologica.</p>
+
+  <div class="impact-grid">
+    <div class="impact-card">
+      <div class="impact-title">Acceso democratico</div>
+      <div class="impact-desc">Cualquier estudiante con un navegador puede acceder a laboratorios profesionales de redes, sin importar el hardware que tenga.</div>
+    </div>
+    <div class="impact-card">
+      <div class="impact-title">Sin renovar hardware</div>
+      <div class="impact-desc">Reduce la necesidad de actualizar constantemente los laboratorios fisicos de las instituciones educativas.</div>
+    </div>
+    <div class="impact-card">
+      <div class="impact-title">Uso sostenible</div>
+      <div class="impact-desc">Centralizar el computo aprovecha mejor los recursos y contribuye a un uso mas eficiente de la infraestructura tecnologica.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ESTADO DEL PROYECTO -->
+<section class="section" id="estado">
+  <div class="section-tag">Linea de Tiempo</div>
+  <h2 class="section-title">Estado actual<br />del proyecto</h2>
+  <p class="section-desc">Avanzamos desde la Prueba de Concepto local hasta produccion en AWS con fecha limite el 15 de Abril de 2026.</p>
+
+  <div class="timeline">
+    <div class="tl-item done">
+      <div class="tl-date">Enero &ndash; Febrero 2026</div>
+      <div class="tl-title">Prueba de Concepto en VirtualBox</div>
+      <div class="tl-desc">Stack completo validado localmente: Docker Compose, Guacamole, MariaDB, TigerVNC, XFCE4, GNS3 y Multitenancy funcionando al 100%.</div>
+      <span class="tl-badge done">Completado</span>
+    </div>
+    <div class="tl-item done">
+      <div class="tl-date">Marzo 2026</div>
+      <div class="tl-title">Diseno de arquitectura AWS</div>
+      <div class="tl-desc">Definicion de VPC, Security Groups, seleccion de instancia m7i-flex.large y estrategia de costos con creditos AWS Educate.</div>
+      <span class="tl-badge done">Completado</span>
+    </div>
+    <div class="tl-item done">
+      <div class="tl-date">Finales de Marzo 2026</div>
+      <div class="tl-title">Migracion a produccion AWS</div>
+      <div class="tl-desc">Aprovisionamiento de EC2, despliegue de stack Docker en nube, configuracion de Nginx Proxy Manager y certificados SSL.</div>
+      <span class="tl-badge done">Completado</span>
+    </div>
+    <div class="tl-item active">
+      <div class="tl-date">Abril 2026 · Ahora</div>
+      <div class="tl-title">Pruebas de integracion y entrega</div>
+      <div class="tl-desc">Validacion con usuarios reales, pruebas de carga con sesiones concurrentes y documentacion final del proyecto.</div>
+      <span class="tl-badge active">En progreso</span>
+    </div>
+    <div class="tl-item pending">
+      <div class="tl-date">15 de Abril 2026</div>
+      <div class="tl-title">Entrega final</div>
+      <div class="tl-desc">Presentacion del MVP completo ante el comite escolar.</div>
+      <span class="tl-badge pending">Fecha limite</span>
+    </div>
+  </div>
+</section>
+
+<!-- LAB ACCESS -->
+<section class="lab-section" id="acceso">
+  <div class="section-tag">Sistema en vivo</div>
+  <h2 class="section-title">Empieza a usar un laboratorio<br />de redes desde tu navegador hoy</h2>
+  <p class="section-desc">La instancia EC2 esta activa y en fase de pruebas. Ingresa al entorno de escritorio remoto sin instalar nada.</p>
+  <a href="https://lab.aularemota.net/guacamole" target="_blank" rel="noopener noreferrer" class="btn-lab">
+    &#128187; Probar demo ahora
+  </a>
+  <div class="lab-note">HTTPS · Apache Guacamole · Instancia m7i-flex.large activa</div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">AulaRemota.</div>
+  <div class="footer-note">Hecho por Felipe Cruz | Desu</div>
+  <div class="footer-deadline">Entrega: 15 Abril 2026</div>
+</footer>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+  const hamburger = document.getElementById('hamburger');
+  const drawer    = document.getElementById('drawer');
+
+  function closeDrawer() {
+    hamburger.classList.remove('open');
+    drawer.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  hamburger.addEventListener('click', () => {
+    const isOpen = drawer.classList.toggle('open');
+    hamburger.classList.toggle('open', isOpen);
+    document.body.style.overflow = isOpen ? 'hidden' : '';
+  });
+
+  // Intersection Observer for scroll-in animations
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.style.opacity = '1';
+        e.target.style.transform = 'translateY(0)';
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.how-step, .stack-card, .impact-card, .scale-card, .tl-item, .cost-card, .sec-item, .iac-card').forEach(el => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(16px)';
+    el.style.transition = 'opacity .5s, transform .5s';
+    observer.observe(el);
+  });
+</script>
+
+<script>
+// ── ANIMATED MESH BACKGROUND ──
+(function() {
+  const canvas = document.getElementById('meshCanvas');
+  const ctx = canvas.getContext('2d');
+
+  let W, H, animId;
+  let t = 0;
+
+  // Grid settings
+  const COLS = 28;
+  const ROWS = 18;
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+
+  function ease(x) { return x < 0.5 ? 2*x*x : 1-Math.pow(-2*x+2,2)/2; }
+
+  function drawMesh(time) {
+    ctx.clearRect(0, 0, W, H);
+
+    const cellW = W / (COLS - 1);
+    const cellH = H / (ROWS - 1);
+
+    // Build displaced grid points
+    const pts = [];
+    for (let r = 0; r < ROWS; r++) {
+      pts[r] = [];
+      for (let c = 0; c < COLS; c++) {
+        const bx = c * cellW;
+        const by = r * cellH;
+        const phase = (c / COLS + r / ROWS) * Math.PI * 2;
+        const wave1 = Math.sin(time * 0.6 + phase) * 14;
+        const wave2 = Math.cos(time * 0.4 + phase * 1.3) * 10;
+        const wave3 = Math.sin(time * 0.9 + c * 0.5) * 6;
+        pts[r][c] = { x: bx + wave1 + wave3, y: by + wave2 };
+      }
+    }
+
+    // Radial fade — center of screen is bright, edges fade
+    function alpha(c, r) {
+      const nx = c / (COLS - 1) * 2 - 1;
+      const ny = r / (ROWS - 1) * 2 - 1;
+      const dist = Math.sqrt(nx*nx + ny*ny);
+      // Donut shape: fade in center AND edges  
+      const ring = Math.sin(dist * Math.PI * 0.85);
+      return Math.max(0, ring) * 0.55;
+    }
+
+    // Draw horizontal lines
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS - 1; c++) {
+        const a = (alpha(c, r) + alpha(c+1, r)) / 2;
+        if (a < 0.01) continue;
+        ctx.beginPath();
+        ctx.moveTo(pts[r][c].x, pts[r][c].y);
+        ctx.lineTo(pts[r][c+1].x, pts[r][c+1].y);
+        ctx.strokeStyle = `rgba(160,180,200,${a})`;
+        ctx.lineWidth = 0.7;
+        ctx.stroke();
+      }
+    }
+
+    // Draw vertical lines
+    for (let c = 0; c < COLS; c++) {
+      for (let r = 0; r < ROWS - 1; r++) {
+        const a = (alpha(c, r) + alpha(c, r+1)) / 2;
+        if (a < 0.01) continue;
+        ctx.beginPath();
+        ctx.moveTo(pts[r][c].x, pts[r][c].y);
+        ctx.lineTo(pts[r+1][c].x, pts[r+1][c].y);
+        ctx.strokeStyle = `rgba(160,180,200,${a})`;
+        ctx.lineWidth = 0.7;
+        ctx.stroke();
+      }
+    }
+
+    // Draw diagonal lines (top-left to bottom-right)
+    for (let r = 0; r < ROWS - 1; r++) {
+      for (let c = 0; c < COLS - 1; c++) {
+        const a = (alpha(c,r) + alpha(c+1,r+1)) / 2 * 0.45;
+        if (a < 0.01) continue;
+        ctx.beginPath();
+        ctx.moveTo(pts[r][c].x, pts[r][c].y);
+        ctx.lineTo(pts[r+1][c+1].x, pts[r+1][c+1].y);
+        ctx.strokeStyle = `rgba(150,170,190,${a})`;
+        ctx.lineWidth = 0.4;
+        ctx.stroke();
+      }
+    }
+
+    // Draw diagonal lines (top-right to bottom-left)
+    for (let r = 0; r < ROWS - 1; r++) {
+      for (let c = 1; c < COLS; c++) {
+        const a = (alpha(c,r) + alpha(c-1,r+1)) / 2 * 0.45;
+        if (a < 0.01) continue;
+        ctx.beginPath();
+        ctx.moveTo(pts[r][c].x, pts[r][c].y);
+        ctx.lineTo(pts[r+1][c-1].x, pts[r+1][c-1].y);
+        ctx.strokeStyle = `rgba(150,170,190,${a})`;
+        ctx.lineWidth = 0.4;
+        ctx.stroke();
+      }
+    }
+  }
+
+  function loop(ts) {
+    t = ts / 1000;
+    drawMesh(t);
+    animId = requestAnimationFrame(loop);
+  }
+
+  window.addEventListener('resize', () => { resize(); });
+  resize();
+  requestAnimationFrame(loop);
+})();
+</script>
+
+</body>
+</html>

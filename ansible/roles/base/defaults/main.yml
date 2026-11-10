@@ -1,0 +1,29 @@
+---
+# Escritorio grafico y servidor VNC.
+#
+# dbus-x11 es CRITICO, no un extra: sin el, los usuarios que no son el
+# principal no pueden arrancar XFCE. El usuario principal si puede, porque
+# hereda cosas del sistema, y eso enmascara el problema hasta que creas el
+# segundo usuario y "no funciona sin motivo".
+paquetes_escritorio:
+  - xfce4
+  - xfce4-goodies
+  - tigervnc-standalone-server
+  - dbus-x11
+
+# Bloqueos de pantalla. Guacamole ya se encarga de la autenticacion; un lock
+# screen dentro de la sesion VNC solo consigue dejar al alumno fuera de su
+# propio escritorio pidiendole una contrasena de Linux que no conoce.
+paquetes_a_purgar:
+  - light-locker
+  - xscreensaver
+
+# La instancia tiene 8 GB y no trae swap. Cuatro escritorios XFCE + GNS3 + el
+# stack de Docker van justos, y sin swap el OOM killer se lleva por delante la
+# sesion de un alumno sin avisar.
+swap_size: 2G
+swap_file: /swapfile
+
+# Reiniciar si un dist-upgrade instala kernel o libc nuevos. Solo ocurre en la
+# primera ejecucion sobre una instancia recien creada.
+reiniciar_si_hace_falta: true

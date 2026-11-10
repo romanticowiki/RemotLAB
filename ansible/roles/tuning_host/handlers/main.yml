@@ -1,0 +1,19 @@
+---
+- name: Reiniciar docker
+  listen: reiniciar docker
+  ansible.builtin.systemd_service:
+    name: docker
+    state: restarted
+  when: docker_unit.stat.exists
+
+- name: Actualizar grub
+  listen: actualizar arranque zswap
+  ansible.builtin.command: update-grub
+  changed_when: true
+
+- name: Reiniciar para aplicar zswap persistente
+  listen: actualizar arranque zswap
+  ansible.builtin.reboot:
+    msg: "Reinicio lanzado por Ansible para aplicar zswap persistente"
+    reboot_timeout: 600
+  when: zswap_reiniciar_al_persistir | bool

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Gestionado por Ansible (rol vnc), pero SOLO se escribe si no existe.
+
+  Sustituye a los 6 clics por escritorio de comandos.txt:
+    Applications > Settings > Power Manager > Display > todo a Never
+
+  xfconfd carga estos valores al arrancar la sesion y REESCRIBE el fichero al
+  cerrarla. Por eso Ansible lo crea con force: false: si lo gestionara con una
+  plantilla normal, la segunda ejecucion siempre saldria "changed" y nunca
+  habria changed=0.
+-->
+<channel name="xfce4-power-manager" version="1.0">
+  <property name="xfce4-power-manager" type="empty">
+    <!-- Nada de apagar la pantalla: el escritorio esta en un servidor. -->
+    <property name="dpms-enabled" type="bool" value="false"/>
+    <property name="blank-on-ac" type="uint" value="0"/>
+    <property name="dpms-on-ac-sleep" type="uint" value="0"/>
+    <property name="dpms-on-ac-off" type="uint" value="0"/>
+    <property name="blank-on-battery" type="uint" value="0"/>
+    <property name="dpms-on-battery-sleep" type="uint" value="0"/>
+    <property name="dpms-on-battery-off" type="uint" value="0"/>
+    <!-- Pestana Security: nada de bloquear al suspender. -->
+    <property name="lock-screen-suspend-hibernate" type="bool" value="false"/>
+    <property name="logind-handle-lid-switch" type="bool" value="false"/>
+    <!-- 0 = no hacer nada al pulsar el boton de apagado. -->
+    <property name="power-button-action" type="uint" value="0"/>
+    <property name="inactivity-on-ac" type="uint" value="14"/>
+    <property name="inactivity-on-battery" type="uint" value="14"/>
+  </property>
+</channel>

@@ -1,0 +1,23 @@
+#!/bin/sh
+# Gestionado por Ansible (rol vnc). Le dice a VNC que arranque XFCE.
+#
+# Las dos lineas de unset son las de comandos.txt: sin ellas XFCE intenta
+# reengancharse al gestor de sesion y al bus de la sesion de consola en vez de
+# arrancar los suyos dentro del display de VNC.
+unset SESSION_MANAGER
+unset DBUS_SESSION_BUS_ADDRESS
+
+# El servidor X de VNC trae activada la extension de salvapantallas y DPMS.
+# A los 10 minutos apaga la pantalla, y en Guacamole eso no se ve como un
+# salvapantallas: se ve como un rectangulo negro que parece que el escritorio
+# se ha caido. Mover el raton lo devuelve, pero para entonces el alumno ya ha
+# recargado la pagina tres veces.
+#
+# Esto lo apaga en el propio servidor X, que es la capa correcta. La
+# configuracion de XFCE (xfce4-power-manager) lo apaga en la capa del
+# escritorio; hacen falta las dos.
+xset s off
+xset s noblank
+xset -dpms
+
+exec startxfce4

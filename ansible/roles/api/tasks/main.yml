@@ -1,0 +1,168 @@
+##############################################################################
+# Rol: api
+#
+# API de solo lectura que alimenta la app movil de supervision.
+#
+# Se ejecuta como servicio systemd en el HOST, no en un contenedor. Necesita
+# leer /proc, consultar systemd y hablar con el socket de Docker: meterlo en
+# un contenedor obligaria a montarle medio sistema de ficheros del host y a
+# darle el socket de Docker, que es equivalente a darle root. Fuera del
+# contenedor y escuchando solo en localhost es mas simple y mas seguro.
+##############################################################################
+---
+
+- name: Comprobar que hay token de la API
+  ansible.builtin.assert:
+    that:
+      - api_token is defined
+      - api_token | length >= 24
+    fail_msg: >-
+      Falta api_token en secrets.yml, o es demasiado corto (minimo 24).
+      Generalo con:  openssl rand -base64 32
+    success_msg: "Token de la API cargado"
+    quiet: true
+
+- name: Comprobar que hay contrasena para el usuario de Guacamole
+  ansible.builtin.assert:
+    that:
+      - guac_supervisor_password is defined
+      - guac_supervisor_password | length >= 16
+    fail_msg: >-
+      Falta guac_supervisor_password en secrets.yml (minimo 16 caracteres).
+      Generala con:  openssl rand -base64 24
+    success_msg: "Contrasena del usuario supervisor cargada"
+    quiet: true
+
+##############################################################################
+# Usuario de Guacamole con el que la app abre escritorios
+#
+# El SQL se pasa por STDIN, nunca dentro de "sh -c". Con la contrasena
+# incrustada en la linea de comandos bastaria un caracter especial para
+# romperlo, y ademas quedaria visible en la tabla de procesos del host mientras
+# dure el comando.
+##############################################################################
+- name: Crear o actualizar el usuario supervisor en Guacamole
+  ansible.builtin.shell:
+    cmd: >-
+      docker exec -i guacamole_db sh -c
+      'exec mariadb -uroot -p"$MYSQL_ROOT_PASSWORD" {{ mysql_database }}'
+    stdin: "{{ lookup('ansible.builtin.template', 'supervisor.sql.j2') }}"
+  register: guac_supervisor
+  # La contrasena esta en el stdin, asi que no puede aparecer en la salida.
+  no_log: true
+  # Cambia la contrasena en cada pasada por diseno, asi que no es idempotente
+  # en el sentido literal. Marcarlo como changed en cada ejecucion seria ruido:
+  # el resultado observable (existe el usuario, con esa contrasena, con esos
+  # permisos) si es estable.
+  changed_when: false
+  notify: reiniciar api
+
+- name: Crear el directorio de la API
+  ansible.builtin.file:
+    path: /opt/aula-remota-api
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Instalar el servidor de la API
+  ansible.builtin.copy:
+    src: api.py
+    dest: /opt/aula-remota-api/api.py
+    owner: root
+    group: root
+    mode: "0755"
+  notify: reiniciar api
+
+# El token va en un fichero de entorno aparte, con permisos 0600, y NO dentro
+# de la unit: el contenido de una unit de systemd es legible por cualquier
+# usuario del sistema con "systemctl cat".
+- name: Escribir el fichero de entorno con el token
+  ansible.builtin.template:
+    src: api.env.j2
+    dest: /etc/aula-remota-api.env
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: reiniciar api
+
+- name: Instalar la unit de systemd
+  ansible.builtin.template:
+    src: aula-remota-api.service.j2
+    dest: /etc/systemd/system/aula-remota-api.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - recargar systemd
+    - reiniciar api
+
+- name: Activar y arrancar la API
+  ansible.builtin.systemd_service:
+    name: aula-remota-api
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# Los handlers corren al final de la play, no aqui. Sin este flush, las
+# comprobaciones de abajo interrogan a la API VIEJA, la que sigue en memoria
+# desde antes de copiar el fichero nuevo: un endpoint recien anadido responde
+# 404 y parece un fallo de codigo cuando lo unico que pasa es que el servicio
+# aun no se ha reiniciado.
+- name: Aplicar los cambios pendientes antes de comprobar
+  ansible.builtin.meta: flush_handlers
+
+- name: Esperar a que la API responda
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ api_puerto }}/salud"
+    status_code: 200
+  register: api_salud
+  until: api_salud.status == 200
+  retries: 12
+  delay: 3
+
+- name: Comprobar que el token protege los endpoints
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ api_puerto }}/api/v1/estado"
+    status_code: 401
+  changed_when: false
+
+- name: Leer el estado con el token
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ api_puerto }}/api/v1/estado"
+    headers:
+      Authorization: "Bearer {{ api_token }}"
+    status_code: 200
+  register: api_estado
+  changed_when: false
+  no_log: true
+
+# Prueba de extremo a extremo del escritorio remoto: si esto devuelve 200, la
+# API supo hablar con Guacamole, supo autenticarse como supervisor y supo
+# encontrar la conexion. Es la comprobacion que evita descubrir en el telefono,
+# delante de alguien, que el usuario de Guacamole no se creo.
+- name: Comprobar que la API puede abrir un escritorio
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ api_puerto }}/api/v1/escritorio?conexion={{ usuarios_lab[0].conexion | urlencode }}"
+    headers:
+      Authorization: "Bearer {{ api_token }}"
+    status_code: 200
+  register: api_escritorio
+  changed_when: false
+  no_log: true
+
+- name: Resumen de la API
+  ansible.builtin.debug:
+    msg:
+      - "API escuchando en {{ api_host }}:{{ api_puerto }}"
+      - "Estado que reporta: {{ api_estado.json.estado_texto }}"
+      - "Servicios vigilados: {{ api_estado.json.servicios | length }}"
+      - "Conexiones: {{ api_estado.json.sesiones.activas }} de {{ api_estado.json.sesiones.limite }} en uso"
+      - "Escritorio remoto: OK para {{ usuarios_lab[0].conexion }}"
+      - ""
+      - "La app movil necesita DOS puertos abiertos: {{ api_puerto }} para los"
+      - "datos y {{ guac_puerto_publico }} para ver el escritorio."
+      - ""
+      - "Publica la API por el proxy TLS y cierra {{ api_puerto }} en el"
+      - "security group cuando la app ya consuma https://{{ lab_fqdn }}."

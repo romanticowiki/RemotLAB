@@ -1,0 +1,110 @@
+##############################################################################
+# Respaldo del estado de Nginx Proxy Manager
+#
+#   cd ansible && ansible-playbook playbooks/backup-npm.yml
+#
+# Se lanza UNA VEZ, despues de configurar el proxy host y emitir el certificado
+# a mano en la interfaz de NPM (Fase 5a). A partir de ahi el certificado y la
+# configuracion del proxy viajan solos en cada reconstruccion: el rol
+# docker_stack los restaura antes del primer "docker compose up".
+#
+# Que se lleva:
+#   npm_data/         BD de NPM (proxy hosts, usuarios) y config de nginx
+#   npm_letsencrypt/  certificado y clave privada
+#
+# Al terminar hay que cifrarlo, porque lleva la clave privada del certificado:
+#   ansible-vault encrypt files/npm-state.tar.gz
+#
+# Recuerda: los certificados de Let's Encrypt duran 90 dias. Si reconstruyes
+# meses despues, el restaurado llega caducado y el cron de NPM lo renovara
+# solo, siempre que el puerto 80 siga abierto.
+##############################################################################
+---
+- name: Respaldar el estado de Nginx Proxy Manager
+  hosts: lab
+  become: true
+
+  vars:
+    tar_remoto: /tmp/npm-state.tar.gz
+
+  tasks:
+    - name: Comprobar que NPM ya tiene estado que respaldar
+      ansible.builtin.stat:
+        path: "{{ compose_dir }}/npm_data/database.sqlite"
+      register: npm_estado
+
+    - name: Abortar si todavia no hay nada configurado
+      ansible.builtin.assert:
+        that: npm_estado.stat.exists
+        fail_msg: >-
+          No existe {{ compose_dir }}/npm_data/database.sqlite.
+          Antes de respaldar hay que entrar en la interfaz de NPM (puerto 81),
+          crear el proxy host de {{ lab_fqdn }} y emitir el certificado.
+        success_msg: "NPM tiene estado, se puede respaldar"
+
+    # Con el contenedor vivo, database.sqlite puede quedar a medio escribir y
+    # el respaldo saldria corrupto justo en el fichero que mas importa.
+    - name: Parar NPM para que el sqlite quede consistente
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_dir }}"
+        services: [npm]
+        profiles: [npm]
+        state: stopped
+
+    # Se usa tar con -C en vez del modulo archive a proposito: -C garantiza que
+    # dentro del paquete las rutas quedan como "npm_data/..." y no como
+    # "home/ubuntu/portal-guacamole/npm_data/...". Si no, el unarchive del rol
+    # docker_stack extraeria el arbol duplicado dentro de si mismo.
+    - name: Empaquetar el estado
+      ansible.builtin.command:
+        cmd: >-
+          tar -czf {{ tar_remoto }}
+          -C {{ compose_dir }}
+          npm_data npm_letsencrypt
+      changed_when: true
+
+    - name: Comprobar que las rutas del paquete son relativas
+      ansible.builtin.command: "tar -tzf {{ tar_remoto }}"
+      register: tar_contenido
+      changed_when: false
+      failed_when: >-
+        tar_contenido.stdout_lines
+        | reject('match', '^npm_(data|letsencrypt)/')
+        | list | length > 0
+
+    - name: Traerse el paquete al nodo de control
+      ansible.builtin.fetch:
+        src: "{{ tar_remoto }}"
+        dest: "{{ dir_respaldos_local }}/npm-state.tar.gz"
+        flat: true
+
+    - name: Borrar el temporal del host
+      ansible.builtin.file:
+        path: "{{ tar_remoto }}"
+        state: absent
+
+    - name: Volver a levantar NPM
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_dir }}"
+        services: [npm]
+        profiles: [npm]
+        state: present
+
+    # El cifrado con Ansible Vault se ha QUITADO junto con el resto del Vault.
+    #
+    # Esto cambia una cosa importante: el paquete lleva la CLAVE PRIVADA del
+    # certificado TLS en claro. Antes se cifraba aqui mismo y por eso podia
+    # commitearse; ahora NO puede. .gitignore excluye ansible/files/ para que
+    # un "git add -A" no lo publique por accidente.
+    #
+    # Si quieres volver a poder versionarlo, cifralo tu:
+    #   ansible-vault encrypt ansible/files/npm-state.tar.gz
+    # y devuelve vault_password_file a ansible.cfg.
+
+    - name: Resumen
+      ansible.builtin.debug:
+        msg:
+          - "Respaldo EN CLARO en {{ dir_respaldos_local }}/npm-state.tar.gz"
+          - ""
+          - "CUIDADO: lleva la clave privada del certificado. NO lo subas a git."
+          - "Guardalo tu, fuera del repositorio."

@@ -1,0 +1,346 @@
+##############################################################################
+# Rol: tuning_host
+#
+# Ajustes del host que no pertenecen a una aplicacion: logs de Docker, BBR y
+# prueba controlada de zswap. Todo se valida antes de aplicarse.
+##############################################################################
+---
+
+##############################################################################
+# Rotacion global de logs de Docker
+##############################################################################
+
+- name: Crear el directorio de configuracion de Docker
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Comprobar si Docker ya esta instalado
+  ansible.builtin.stat:
+    path: /lib/systemd/system/docker.service
+  register: docker_unit
+
+- name: Configurar la rotacion global de logs de Docker
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: reiniciar docker
+
+# Si Docker ya existe, aplica el default antes de que docker_stack recree los
+# contenedores. En una maquina limpia el handler se salta y Docker leera el
+# fichero cuando el rol docker_stack lo instale y arranque por primera vez.
+- name: Aplicar la configuracion de Docker antes del stack
+  ansible.builtin.meta: flush_handlers
+
+
+##############################################################################
+# TCP BBR
+##############################################################################
+
+- name: Consultar los controles de congestion disponibles
+  ansible.builtin.command: sysctl -n net.ipv4.tcp_available_congestion_control
+  register: bbr_disponible_inicial
+  changed_when: false
+  when: bbr_habilitado | bool
+
+- name: Intentar cargar el modulo TCP BBR
+  ansible.builtin.command: modprobe tcp_bbr
+  register: bbr_modprobe
+  changed_when: false
+  failed_when: false
+  when:
+    - bbr_habilitado | bool
+    - "'bbr' not in bbr_disponible_inicial.stdout.split()"
+
+- name: Volver a consultar los controles de congestion
+  ansible.builtin.command: sysctl -n net.ipv4.tcp_available_congestion_control
+  register: bbr_disponible
+  changed_when: false
+  when: bbr_habilitado | bool
+
+- name: Explicar si BBR no esta disponible
+  ansible.builtin.debug:
+    msg: >-
+      El kernel {{ ansible_kernel }} no ofrece BBR. No se escribieron sysctl;
+      se conserva el algoritmo actual.
+  when:
+    - bbr_habilitado | bool
+    - "'bbr' not in bbr_disponible.stdout.split()"
+
+- name: Activar BBR con una cola fq
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_file: /etc/sysctl.d/99-aularemota-red.conf
+    sysctl_set: true
+    reload: true
+  loop:
+    - name: net.core.default_qdisc
+      value: fq
+    - name: net.ipv4.tcp_congestion_control
+      value: bbr
+  when:
+    - bbr_habilitado | bool
+    - "'bbr' in bbr_disponible.stdout.split()"
+
+
+##############################################################################
+# zswap: prueba en caliente y persistencia opcional
+##############################################################################
+
+- name: Validar los parametros solicitados para zswap
+  ansible.builtin.assert:
+    that:
+      - zswap_max_pool_percent | int >= 1
+      - zswap_max_pool_percent | int <= 50
+      - zswap_compressor is match('^[a-z0-9_-]+$')
+      - zswap_zpool is match('^[a-z0-9_-]+$')
+      - not zswap_persistente | bool or zswap_prueba_runtime | bool
+    fail_msg: "Los parametros de zswap no son validos"
+  when: zswap_prueba_runtime | bool or zswap_persistente | bool
+
+# Un fallo de la prueba temporal no debe impedir desplegar el laboratorio.
+- name: Probar zswap sin interrumpir el despliegue
+  when: zswap_prueba_runtime | bool or zswap_persistente | bool
+  block:
+    - name: Comprobar que el kernel expone zswap
+      ansible.builtin.stat:
+        path: /sys/module/zswap/parameters/enabled
+      register: zswap_sysfs
+      when: zswap_prueba_runtime | bool or zswap_persistente | bool
+
+    - name: Abortar si se pidio zswap pero el kernel no lo expone
+      ansible.builtin.assert:
+        that: zswap_sysfs.stat.exists
+        fail_msg: >-
+          El kernel {{ ansible_kernel }} no expone zswap en sysfs. No se forzo una
+          configuracion incompatible; evalua zram para este host.
+      when: zswap_prueba_runtime | bool or zswap_persistente | bool
+
+    # modprobe puede fallar si una funcion viene integrada en el kernel. La
+    # disponibilidad se comprueba despues en /proc/crypto y escribiendo en sysfs.
+    - name: Cargar los modulos solicitados para la prueba de zswap
+      ansible.builtin.command: "modprobe {{ item }}"
+      register: zswap_modulos
+      changed_when: false
+      failed_when: false
+      loop:
+        - "crypto-{{ zswap_compressor }}"
+        - "{{ zswap_zpool }}"
+      when: zswap_prueba_runtime | bool
+
+    - name: Leer la configuracion actual de zswap
+      ansible.builtin.command: "cat /sys/module/zswap/parameters/{{ item }}"
+      register: tuning_host_zswap_actual
+      changed_when: false
+      check_mode: false
+      loop:
+        - enabled
+        - max_pool_percent
+        - compressor
+        - zpool
+      when: zswap_prueba_runtime | bool
+
+    - name: Leer los algoritmos registrados en el kernel
+      ansible.builtin.command: cat /proc/crypto
+      register: tuning_host_zswap_crypto
+      changed_when: false
+      check_mode: false
+      when: zswap_prueba_runtime | bool
+
+    # sysfs devuelve un valor activo, no una lista como comp_algorithm de zram.
+    - name: Guardar los valores actuales de zswap
+      ansible.builtin.set_fact:
+        tuning_host_zswap_enabled_actual: "{{ tuning_host_zswap_actual.results[0].stdout | trim }}"
+        tuning_host_zswap_pool_actual: "{{ tuning_host_zswap_actual.results[1].stdout | trim }}"
+        tuning_host_zswap_compressor_actual: "{{ tuning_host_zswap_actual.results[2].stdout | trim }}"
+        tuning_host_zswap_zpool_actual: "{{ tuning_host_zswap_actual.results[3].stdout | trim }}"
+        tuning_host_zswap_compresores_registrados: >-
+          {{ tuning_host_zswap_crypto.stdout | regex_findall('(?m)^name\s*:\s*(\S+)') }}
+      when: zswap_prueba_runtime | bool
+
+    - name: Configurar el porcentaje maximo de zswap en caliente
+      ansible.builtin.shell:
+        cmd: >-
+          printf '%s' {{ zswap_max_pool_percent | int | string | quote }}
+          > /sys/module/zswap/parameters/max_pool_percent
+      changed_when: true
+      when:
+        - zswap_prueba_runtime | bool
+        - tuning_host_zswap_pool_actual | int != zswap_max_pool_percent | int
+
+    # Una escritura puede ser rechazada aunque /proc/crypto registre el algoritmo.
+    # Se relee el resultado y se informa el fallback; persistir exige coincidencia.
+    - name: Configurar el compresor de zswap en caliente
+      ansible.builtin.shell:
+        cmd: >-
+          printf '%s' {{ zswap_compressor | quote }}
+          > /sys/module/zswap/parameters/compressor
+      register: tuning_host_zswap_compressor_escritura
+      changed_when: tuning_host_zswap_compressor_escritura.rc == 0
+      failed_when: false
+      when:
+        - zswap_prueba_runtime | bool
+        - zswap_compressor in tuning_host_zswap_compresores_registrados
+        - tuning_host_zswap_compressor_actual != zswap_compressor
+
+    # zpool no ofrece un catalogo fiable: el kernel decide si acepta la escritura.
+    - name: Configurar el allocator de zswap en caliente
+      ansible.builtin.shell:
+        cmd: >-
+          printf '%s' {{ zswap_zpool | quote }}
+          > /sys/module/zswap/parameters/zpool
+      register: tuning_host_zswap_zpool_escritura
+      changed_when: tuning_host_zswap_zpool_escritura.rc == 0
+      failed_when: false
+      when:
+        - zswap_prueba_runtime | bool
+        - tuning_host_zswap_zpool_actual != zswap_zpool
+
+    - name: Activar zswap en caliente
+      ansible.builtin.shell:
+        cmd: printf '1' > /sys/module/zswap/parameters/enabled
+      changed_when: true
+      when:
+        - zswap_prueba_runtime | bool
+        - tuning_host_zswap_enabled_actual not in ['Y', '1']
+
+    - name: Releer los parametros efectivos de zswap
+      ansible.builtin.command: "cat /sys/module/zswap/parameters/{{ item }}"
+      register: tuning_host_zswap_verificado
+      changed_when: false
+      check_mode: false
+      loop:
+        - enabled
+        - max_pool_percent
+        - compressor
+        - zpool
+      when: zswap_prueba_runtime | bool
+
+    - name: Guardar los parametros efectivos de zswap
+      ansible.builtin.set_fact:
+        tuning_host_zswap_efectivo:
+          enabled: "{{ tuning_host_zswap_verificado.results[0].stdout | trim }}"
+          max_pool_percent: "{{ tuning_host_zswap_verificado.results[1].stdout | trim }}"
+          compressor: "{{ tuning_host_zswap_verificado.results[2].stdout | trim }}"
+          zpool: "{{ tuning_host_zswap_verificado.results[3].stdout | trim }}"
+      when: zswap_prueba_runtime | bool
+
+    - name: Mostrar los parametros efectivos de zswap
+      ansible.builtin.debug:
+        msg:
+          - "Estado leido del kernel: {{ tuning_host_zswap_efectivo }}"
+          - "{{ 'Modo check: no se aplicaron cambios en sysfs.' if ansible_check_mode else 'Prueba runtime aplicada.' }}"
+      when: zswap_prueba_runtime | bool
+
+    - name: Advertir si la prueba runtime de zswap no es valida
+      ansible.builtin.debug:
+        msg: >-
+          Se solicito zswap activo con max_pool_percent={{ zswap_max_pool_percent }},
+          compresor={{ zswap_compressor }} y allocator={{ zswap_zpool }}.
+          El kernel dejo {{ tuning_host_zswap_efectivo }}. La medicion de esta
+          prueba no es valida en este host; continua el despliegue sin exigir
+          zswap. Revisa compatibilidad o evalua zram antes de volver a medir.
+      when:
+        - zswap_prueba_runtime | bool
+        - not ansible_check_mode
+        - tuning_host_zswap_efectivo.enabled not in ['Y', '1'] or
+          tuning_host_zswap_efectivo.max_pool_percent | int != zswap_max_pool_percent | int
+
+    - name: Informar si zswap conserva un compresor o allocator alternativo
+      ansible.builtin.debug:
+        msg: >-
+          zswap usa {{ tuning_host_zswap_efectivo.compressor }}/{{ tuning_host_zswap_efectivo.zpool }};
+          se solicito {{ zswap_compressor }}/{{ zswap_zpool }}.
+          Compresor registrado: {{ zswap_compressor in tuning_host_zswap_compresores_registrados }}.
+          Error de escritura del compresor: {{ tuning_host_zswap_compressor_escritura.stderr | default('ninguno') }}.
+          Error de escritura del allocator: {{ tuning_host_zswap_zpool_escritura.stderr | default('ninguno') }}.
+          Se conserva el valor efectivo durante la prueba; no se persistira una
+          combinacion que el kernel no haya confirmado.
+      when:
+        - zswap_prueba_runtime | bool
+        - not ansible_check_mode
+        - tuning_host_zswap_efectivo.compressor != zswap_compressor or tuning_host_zswap_efectivo.zpool != zswap_zpool
+  rescue:
+    # La prueba es opcional: incluso un rechazo de sysfs debe permitir seguir.
+    # Se relee antes de avisar; el assert de persistencia queda fuera del rescue.
+    - name: Leer el estado de zswap despues del fallo de la prueba
+      ansible.builtin.command: "cat /sys/module/zswap/parameters/{{ item }}"
+      register: tuning_host_zswap_rescate
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      loop:
+        - enabled
+        - max_pool_percent
+        - compressor
+        - zpool
+
+    - name: Guardar el estado disponible despues del fallo de zswap
+      ansible.builtin.set_fact:
+        tuning_host_zswap_efectivo:
+          enabled: "{{ tuning_host_zswap_rescate.results[0].stdout | default('') | trim | default('no disponible', true) }}"
+          max_pool_percent: "{{ tuning_host_zswap_rescate.results[1].stdout | default('') | trim | default('no disponible', true) }}"
+          compressor: "{{ tuning_host_zswap_rescate.results[2].stdout | default('') | trim | default('no disponible', true) }}"
+          zpool: "{{ tuning_host_zswap_rescate.results[3].stdout | default('') | trim | default('no disponible', true) }}"
+
+    - name: Avisar y continuar si el kernel rechaza la prueba de zswap
+      ansible.builtin.debug:
+        msg: >-
+          La prueba opcional de zswap fallo en {{ ansible_failed_task.name }}:
+          {{ ansible_failed_result.msg | default('error del kernel') }}.
+          Se solicito enabled=Y, max_pool_percent={{ zswap_max_pool_percent }},
+          compressor={{ zswap_compressor }}, zpool={{ zswap_zpool }};
+          estado efectivo: {{ tuning_host_zswap_efectivo }}.
+          La medicion no es valida; continua el despliegue. Revisa el kernel
+          o evalua zram. Una persistencia solicitada seguira exigiendo
+          confirmacion de todos los parametros efectivos.
+
+- name: Comprobar zswap efectivo antes de persistir
+  ansible.builtin.assert:
+    that:
+      - tuning_host_zswap_efectivo.enabled in ['Y', '1']
+      - tuning_host_zswap_efectivo.max_pool_percent | int == zswap_max_pool_percent | int
+      - tuning_host_zswap_efectivo.compressor == zswap_compressor
+      - tuning_host_zswap_efectivo.zpool == zswap_zpool
+    fail_msg: >-
+      No se escribira GRUB: los parametros efectivos {{ tuning_host_zswap_efectivo }} no
+      coinciden con los solicitados. Usa una combinacion admitida y medida.
+  when:
+    - zswap_persistente | bool
+    - not ansible_check_mode
+
+- name: Crear el directorio de parametros de arranque
+  ansible.builtin.file:
+    path: /etc/default/grub.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: zswap_persistente | bool
+
+- name: Escribir los parametros persistentes de zswap
+  ansible.builtin.template:
+    src: 99-aularemota-zswap.cfg.j2
+    dest: /etc/default/grub.d/99-aularemota-zswap.cfg
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: actualizar arranque zswap
+  when: zswap_persistente | bool
+
+- name: Retirar la persistencia de zswap cuando se deshabilita
+  ansible.builtin.file:
+    path: /etc/default/grub.d/99-aularemota-zswap.cfg
+    state: absent
+  notify: actualizar arranque zswap
+  when: not zswap_persistente | bool

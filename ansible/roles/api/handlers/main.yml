@@ -1,0 +1,9 @@
+---
+- name: recargar systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: reiniciar api
+  ansible.builtin.systemd_service:
+    name: aula-remota-api
+    state: restarted
